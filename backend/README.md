@@ -44,8 +44,6 @@ La búsqueda no usa `LIKE`: se apoya en un índice invertido de PostgreSQL.
 
 ## 🔌 Endpoints Principales
 
-<!-- TODO: ajustar rutas y payloads a los reales -->
-
 La referencia completa e interactiva está en Swagger: <http://localhost:3000/docs>.
 
 | Método | Ruta | Descripción |
@@ -65,8 +63,6 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 
 ### Eventos en tiempo real
 
-<!-- TODO: ajustar nombre del evento y payload a los reales -->
-
 El endpoint `GET /events` responde con `Content-Type: text/event-stream`. Ejemplo de evento:
 
 ```text
@@ -80,20 +76,20 @@ El frontend se conecta con `EventSource`, que reconecta automáticamente si se c
 
 ## 📁 Estructura del Proyecto
 
-<!-- TODO: reemplazar por la estructura real de src/ -->
-
 ```text
 backend/
 ├── prisma/
-│   ├── schema.prisma     # Modelo de datos
-│   └── migrations/       # Migraciones (incluye tsvector e índice GIN)
+│   ├── schema.prisma     # Modelos de datos y configuración de Prisma
+│   └── migrations/       # Migraciones SQL (incluye índices GIN y funciones tsvector)
 ├── src/
-│   ├── main.ts           # Punto de entrada (configura Swagger y CORS)
-│   ├── app.module.ts     # Módulo raíz
-│   └── ...               # Módulos de documentos, búsqueda y eventos
-├── test/                 # Pruebas e2e
+│   ├── main.ts           # Inicialización, CORS y documentación Swagger
+│   ├── app.module.ts     # Módulo raíz de la aplicación
+│   ├── documents/        # Lógica de carga, procesamiento y almacenamiento
+│   ├── search/           # Módulo de búsqueda optimizada (Full-Text Search)
+│   └── events/           # Canal de eventos en tiempo real (SSE)
+├── test/                 # Pruebas e2e y unitarias
 ├── .env.example          # Plantilla de variables de entorno
-└── .env.test             # Variables para las pruebas e2e
+└── .env.test             # Variables de entorno para pruebas
 ```
 
 ---
@@ -127,7 +123,6 @@ Contenido de `.env.example`:
 NODE_ENV=development
 PORT=3000
 DATABASE_URL="postgresql://docs_user:docs_password@localhost:5432/docs_db?schema=public"
-CORS_ORIGIN=http://localhost:5173
 MAX_FILE_SIZE_MB=10
 ```
 
@@ -136,16 +131,14 @@ MAX_FILE_SIZE_MB=10
 | `NODE_ENV` | Entorno de ejecución (`development`, `test`, `production`) |
 | `PORT` | Puerto de la API |
 | `DATABASE_URL` | Cadena de conexión a PostgreSQL. Dentro de Docker Compose el host es `db` en lugar de `localhost` |
-| `CORS_ORIGIN` | Origen del frontend permitido (necesario para la API y para SSE) |
 | `MAX_FILE_SIZE_MB` | Tamaño máximo permitido por archivo cargado |
 
 Variables para las pruebas e2e, en `.env.test` (usan una base de datos separada):
 
 ```env
 NODE_ENV=test
-PORT=3001
+PORT=3000
 DATABASE_URL="postgresql://docs_user:docs_password@localhost:5432/docs_db_test?schema=public"
-CORS_ORIGIN=http://localhost:5173
 MAX_FILE_SIZE_MB=1
 ```
 

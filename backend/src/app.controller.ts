@@ -1,12 +1,22 @@
-import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service.js';
+import { Controller, Get, HttpStatus } from '@nestjs/common';
+import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ResponseWrapperDto } from './common/dto/response-wrapper.dto.js';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
   @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  @ApiOperation({ summary: "Get API status" })
+  @ApiResponse({
+    status: 200,
+    description: "Returns API status",
+    type: ResponseWrapperDto,
+  })
+  getStatus(): ResponseWrapperDto {
+    return {
+      success: true,
+      message: "Davivienda Test is running!",
+      statusCode: HttpStatus.OK,
+      data: null,
+    };
   }
 }

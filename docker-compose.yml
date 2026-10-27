@@ -27,11 +27,8 @@ services:
     restart: always
     ports:
       - "${BACKEND_PORT:-3000}:3000"
-    environment:
-      - NODE_ENV=development
-      - PORT=3000
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-docs_user}:${POSTGRES_PASSWORD:-docs_password}@db:5432/${POSTGRES_DB:-docs_db}?schema=public
-      - CORS_ORIGIN=http://localhost:${FRONTEND_PORT:-5173}
+    env_file:
+      - ./backend/.env
     depends_on:
       db:
         condition: service_healthy
@@ -48,8 +45,8 @@ services:
     restart: always
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
-    environment:
-      - VITE_API_URL=http://localhost:${BACKEND_PORT:-3000}
+    env_file:
+      - ./frontend/.env
     depends_on:
       - backend
     volumes:
