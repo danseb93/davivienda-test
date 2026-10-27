@@ -11,8 +11,7 @@ RUN npm install
 # Copiar el resto del código (incluyendo la carpeta prisma)
 COPY . .
 
-# Generar el cliente de Prisma adaptado al entorno Linux de Alpine
-RUN npx prisma generate
+RUN npx prisma generate dev
 
 EXPOSE 3000
 

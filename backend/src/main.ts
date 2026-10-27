@@ -10,7 +10,7 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const port = process.env.PORT || configService.get<number>("PORT") || 3000;
+  const port = configService.get<number>("PORT") || 3000;
 
   // Establecer el prefijo global para todas las rutas
   app.setGlobalPrefix("api");
@@ -34,7 +34,6 @@ async function bootstrap() {
 
   await app.listen(port);
   console.log(
-    "\x1b[34m%s\x1b[0m",
     `
 ┌────────────────────────────────────────────────┐
 │             Test Davivienda API                │

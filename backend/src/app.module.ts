@@ -3,6 +3,7 @@ import { AppController } from './app.controller.js';
 import { ConfigModule } from '@nestjs/config';
 import { DocumentsModule } from './modules/documents/documents.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { SearchModule } from './modules/search/search.module.js';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     }),
     PrismaModule,
     DocumentsModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [],

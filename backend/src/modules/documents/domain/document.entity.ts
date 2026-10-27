@@ -7,6 +7,7 @@ export class Document {
   category!: string;
   tags!: string[];
   version!: string;
+  content!: string;
   fileName!: string;
   storageName!: string;
   mimeType!: string;
