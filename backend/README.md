@@ -6,12 +6,13 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 
 ## 🚀 Características Principales
 
-- **Carga de documentos con metadatos:** recepción multipart por REST de archivos TXT, PDF y Markdown, con validación de formato y tamaño máximo.
-- **Procesamiento asíncrono:** la respuesta inicial es inmediata y devuelve un ID de seguimiento con estado `PROCESANDO`. La extracción e indexación del texto ocurren en segundo plano.
-- **Búsqueda full-text de alto rendimiento:** búsqueda por título, metadatos y contenido con PostgreSQL Full-Text Search (sin `LIKE`), con paginación y resaltado de fragmentos. Objetivo: 400 ms a 1 s.
-- **Eventos en tiempo real (SSE):** emisión de un evento al frontend cuando el documento pasa a `INDEXADO` o `ERROR`.
+- **CRUD de documentos:** listado, carga multipart de archivos TXT/PDF/Markdown con metadatos, actualización de metadatos y eliminación del archivo.
+- **Validación de carga:** revisión de formato, contenido y tamaño máximo configurable.
+- **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
 - **API documentada con Swagger:** referencia interactiva de todos los endpoints.
 - **Manejo estructurado de errores:** validación de datos y filtros de excepciones.
+
+La búsqueda, extracción/indexación de contenido y notificaciones en tiempo real quedan para una siguiente etapa.
 
 ---
 
@@ -32,9 +33,9 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 
 ---
 
-## 🔎 Búsqueda Full-Text
+## 🔎 Búsqueda Full-Text (siguiente etapa)
 
-La búsqueda no usa `LIKE`: se apoya en un índice invertido de PostgreSQL.
+La búsqueda aún no forma parte de los endpoints implementados. Para esa etapa, el diseño previsto evita `LIKE` y se apoya en un índice invertido de PostgreSQL.
 
 - Cada documento tiene una columna `tsvector` con un índice **GIN** que combina título, metadatos y contenido.
 - Las consultas se ejecutan con `prisma.$queryRaw`, porque el cliente de Prisma no expone funciones como `ts_rank` (relevancia) ni `ts_headline` (resaltado de fragmentos).
@@ -48,10 +49,12 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
-| `POST` | `/documents` | Sube un documento (multipart) con metadatos. Devuelve ID y estado `PROCESANDO` |
-| `GET` | `/documents/search` | Búsqueda full-text con paginación y resaltado |
-| `GET` | `/documents/:id` | Detalle del documento: contenido y metadatos |
-| `GET` | `/events` | Canal SSE con los cambios de estado de los documentos |
+| `GET` | `/api/v1/documents` | Lista todos los documentos y sus metadatos |
+| `POST` | `/api/v1/documents` | Sube un archivo TXT, PDF o Markdown con metadatos vía multipart |
+| `PATCH` | `/api/v1/documents/:id` | Actualiza metadatos del documento |
+| `DELETE` | `/api/v1/documents/:id` | Elimina el documento y el archivo almacenado |
+
+Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos. La carga inicial queda con estado `PROCESSING`; el procesamiento/indexado, la búsqueda y el reemplazo del archivo no hacen parte de estos endpoints.
 
 ### Estados de un documento
 
@@ -61,9 +64,11 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | `INDEXADO` | Disponible para búsqueda y visualización |
 | `ERROR` | Falló el procesamiento |
 
-### Eventos en tiempo real
+Por ahora, la carga deja el documento en `PROCESSING`; el cambio posterior a `INDEXED` o `ERROR` aún no está implementado.
 
-El endpoint `GET /events` responde con `Content-Type: text/event-stream`. Ejemplo de evento:
+### Eventos en tiempo real (siguiente etapa)
+
+Está previsto emitir eventos con `Content-Type: text/event-stream` cuando el estado cambie. Ejemplo:
 
 ```text
 event: document.status
@@ -84,9 +89,10 @@ backend/
 ├── src/
 │   ├── main.ts           # Inicialización, CORS y documentación Swagger
 │   ├── app.module.ts     # Módulo raíz de la aplicación
-│   ├── documents/        # Lógica de carga, procesamiento y almacenamiento
-│   ├── search/           # Módulo de búsqueda optimizada (Full-Text Search)
-│   └── events/           # Canal de eventos en tiempo real (SSE)
+│   └── modules/
+|       ├── documents/    # Lógica de carga, procesamiento y almacenamiento
+|       ├── events/       # Canal de eventos en tiempo real (SSE)
+|       └── search/       # Módulo de búsqueda optimizada (Full-Text Search)
 ├── test/                 # Pruebas e2e y unitarias
 ├── .env.example          # Plantilla de variables de entorno
 └── .env.test             # Variables de entorno para pruebas
