@@ -9,10 +9,11 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 - **CRUD de documentos:** listado, carga multipart de archivos TXT/PDF/Markdown con metadatos, actualización de metadatos y eliminación del archivo.
 - **Validación de carga:** revisión de formato, contenido y tamaño máximo configurable.
 - **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
+- **Búsqueda full-text:** PostgreSQL `tsvector`/GIN sobre títulos, metadatos y contenido indexado; no utiliza `LIKE`.
 - **API documentada con Swagger:** referencia interactiva de todos los endpoints.
 - **Manejo estructurado de errores:** validación de datos y filtros de excepciones.
 
-La búsqueda, extracción/indexación de contenido y notificaciones en tiempo real quedan para una siguiente etapa.
+El endpoint de búsqueda y el índice de texto completo forman parte de HU-02. La extracción e indexación asíncrona del contenido y las notificaciones SSE son trabajos separados.
 
 ---
 
@@ -33,13 +34,13 @@ La búsqueda, extracción/indexación de contenido y notificaciones en tiempo re
 
 ---
 
-## 🔎 Búsqueda Full-Text (siguiente etapa)
+## 🔎 Búsqueda Full-Text
 
-La búsqueda aún no forma parte de los endpoints implementados. Para esa etapa, el diseño previsto evita `LIKE` y se apoya en un índice invertido de PostgreSQL.
+La ruta `GET /api/v1/search` acepta `q`, `page` y `pageSize` (máximo 100). Admite términos y frases exactas con comillas dobles; la respuesta incluye relevancia, paginación y fragmentos con coincidencias dentro de `<mark>`.
 
-- Cada documento tiene una columna `tsvector` con un índice **GIN** que combina título, metadatos y contenido.
-- Las consultas se ejecutan con `prisma.$queryRaw`, porque el cliente de Prisma no expone funciones como `ts_rank` (relevancia) ni `ts_headline` (resaltado de fragmentos).
-- La columna `tsvector` y su índice GIN se crean en una migración SQL.
+- Un trigger mantiene `searchVector` con título, metadatos, etiquetas y contenido; un índice **GIN** acelera las consultas.
+- Las consultas parametrizadas usan `prisma.$queryRaw`, `websearch_to_tsquery`, `ts_rank_cd` y `ts_headline`; no utilizan `LIKE`.
+- El campo `content` almacena el texto extraído; su extracción y actualización de estado se implementarán en el flujo de procesamiento asíncrono.
 
 ---
 
@@ -50,11 +51,12 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | `GET` | `/api/v1/documents` | Lista todos los documentos y sus metadatos |
+| `GET` | `/api/v1/search?q=motor&page=1&pageSize=20` | Busca documentos por términos o frases con paginación y resaltado |
 | `POST` | `/api/v1/documents` | Sube un archivo TXT, PDF o Markdown con metadatos vía multipart |
 | `PATCH` | `/api/v1/documents/:id` | Actualiza metadatos del documento |
 | `DELETE` | `/api/v1/documents/:id` | Elimina el documento y el archivo almacenado |
 
-Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos. La carga inicial queda con estado `PROCESSING`; el procesamiento/indexado, la búsqueda y el reemplazo del archivo no hacen parte de estos endpoints.
+Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos. La carga conserva el estado `PROCESSING`; el procesamiento asíncrono que extrae el texto y cambia el estado a `INDEXED` o `ERROR` pertenece a otro alcance. El reemplazo del archivo no hace parte de estos endpoints.
 
 ### Estados de un documento
 
@@ -64,7 +66,7 @@ Los metadatos requeridos para la carga son `title`, `author`, `category` y `vers
 | `INDEXADO` | Disponible para búsqueda y visualización |
 | `ERROR` | Falló el procesamiento |
 
-Por ahora, la carga deja el documento en `PROCESSING`; el cambio posterior a `INDEXED` o `ERROR` aún no está implementado.
+La carga inicial deja el documento en `PROCESSING`. La transición a `INDEXED` o `ERROR` requiere el procesamiento asíncrono.
 
 ### Eventos en tiempo real (siguiente etapa)
 

@@ -53,7 +53,8 @@ export class DocumentsController {
       success: true,
       message: 'Documents retrieved successfully',
       data: documents.map(
-        ({ storageName: _storageName, ...document }) => document,
+        ({ storageName: _storageName, content: _content, ...document }) =>
+          document,
       ),
     };
   }
@@ -68,7 +69,7 @@ export class DocumentsController {
     @Body() dto: CreateDocumentDto,
     @UploadedFile() file: Express.Multer.File | undefined,
   ): Promise<DocumentResponseDto> {
-    const { storageName: _storageName, ...data } =
+    const { storageName: _storageName, content: _content, ...data } =
       await this.documentCreator.create(dto, file);
     return {
       statusCode: HttpStatus.CREATED,
@@ -86,7 +87,7 @@ export class DocumentsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateDocumentDto,
   ): Promise<DocumentResponseDto> {
-    const { storageName: _storageName, ...data } =
+    const { storageName: _storageName, content: _content, ...data } =
       await this.documentUpdater.update(id, dto);
     return {
       statusCode: HttpStatus.OK,

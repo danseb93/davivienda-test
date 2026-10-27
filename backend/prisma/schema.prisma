@@ -21,6 +21,8 @@ model Document {
   category    String         @db.VarChar(100)
   tags        String[]       @default([])
   version     String         @db.VarChar(40)
+  content     String         @default("") @db.Text
+  searchVector Unsupported("tsvector")?
   fileName    String         @db.VarChar(255)
   storageName String         @unique @db.VarChar(255)
   mimeType    String         @db.VarChar(100)
