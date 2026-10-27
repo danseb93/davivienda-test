@@ -1,6 +1,13 @@
 # Buscador y Visor de Documentos Técnicos
 
-Solución Full Stack para la gestión y búsqueda de alta velocidad de documentación técnica. Permite cargar documentos, buscarlos rápidamente, visualizarlos y recibir notificaciones en tiempo real cuando termina su procesamiento.
+Aplicación web Full Stack para la carga, procesamiento, búsqueda de alto rendimiento y visualización de documentos técnicos (manuales, especificaciones, guías de arquitectura).
+
+## ✨ Qué hace
+
+- **Carga de documentos** (TXT, PDF, Markdown) con metadatos: título, autor, categoría, etiquetas y versión.
+- **Búsqueda full-text** sobre título, metadatos y contenido, con paginación y resaltado de coincidencias. Sin consultas `LIKE`; tiempos de respuesta objetivo entre **400 ms y 1 s**.
+- **Visor de documentos** con el contenido y los metadatos completos.
+- **Notificaciones en tiempo real** (SSE) cuando un documento pasa a `INDEXADO` o `ERROR`, sin polling.
 
 ---
 
@@ -8,35 +15,110 @@ Solución Full Stack para la gestión y búsqueda de alta velocidad de documenta
 
 ```text
 .
-├── frontend/       # Interfaz de usuario (React + Vite + TypeScript)
-├── backend/        # API y motor de búsqueda
-└── README.md       # Este archivo
+├── backend/              # API, procesamiento e indexación (NestJS + Prisma)
+├── frontend/             # Interfaz web (React + Vite + TypeScript)
+├── docs/
+│   ├── architecture.md   # Arquitectura, decisiones y escalabilidad
+│   └── ia.md             # Uso de IA durante el desarrollo
+├── .env.example          # Variables de entorno para Docker Compose
+├── docker-compose.yml    # Levantamiento unificado del entorno
+└── README.md             # Este archivo
 ```
 
 ---
 
-## 📚 Documentación por Módulo
+## 📚 Documentación
 
-| Módulo | Descripción | Documentación |
+| Módulo | Descripción | Enlace |
 | --- | --- | --- |
-| **Frontend** | Interfaz para cargar, buscar y visualizar documentos | [frontend/README.md](./frontend/README.md) |
-| **Backend** | API, procesamiento e indexación de documentos | [backend/README.md](./backend/README.md) |
+| **Frontend** | Instalación, variables de entorno y ejecución de la interfaz | [frontend/README.md](./frontend/README.md) |
+| **Backend** | Instalación, base de datos, scripts y pruebas de la API | [backend/README.md](./backend/README.md) |
+| **Arquitectura** | Diagrama, justificación del stack y estrategia de tiempo real | [docs/architecture.md](./docs/architecture.md) |
+| **Uso de IA** | Herramientas, casos de uso, prompts y validación humana | [docs/ia.md](./docs/ia.md) |
 
 ---
 
 ## 🚀 Inicio Rápido
 
-Cada módulo se levanta de forma independiente. Consulta el README de cada uno para el detalle completo:
+### Opción A: Docker Compose (recomendada)
 
-1. **Backend:** _pendiente de documentar_ → [ver instrucciones](./backend/README.md)
-2. **Frontend:** instalación, variables de entorno y ejecución → [ver instrucciones](./frontend/README.md)
+Requisitos: [Docker](https://www.docker.com/) con Docker Compose.
 
-> Se recomienda levantar primero el backend, ya que el frontend depende de su API y de la conexión en tiempo real.
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Una vez levantado el entorno:
+
+| Servicio | URL |
+| --- | --- |
+| Frontend | <http://localhost:5173> |
+| API (backend) | <http://localhost:3000> |
+| Documentación Swagger | <http://localhost:3000/docs> |
+| PostgreSQL | `localhost:5432` |
+
+### Opción B: Ejecución local
+
+Útil para desarrollar con recarga automática.
+
+1. **Base de datos:** levanta solo PostgreSQL con `docker compose up -d db`.
+2. **Backend:** sigue las instrucciones de [backend/README.md](./backend/README.md).
+3. **Frontend:** sigue las instrucciones de [frontend/README.md](./frontend/README.md).
+
+Levanta primero el backend: el frontend depende de su API y del canal de eventos en tiempo real.
+
+---
+
+## 🔐 Variables de Entorno
+
+Cada módulo tiene su propio archivo `.env.example` que sirve de plantilla. Los archivos `.env` no se versionan.
+
+| Módulo | Archivo | Detalle |
+| --- | --- | --- |
+| Raíz (Docker Compose) | `.env` | Más abajo |
+| Backend | `backend/.env` y `backend/.env.test` | [backend/README.md](./backend/README.md#3-variables-de-entorno) |
+| Frontend | `frontend/.env` | [frontend/README.md](./frontend/README.md#3-variables-de-entorno) |
+
+Variables de la raíz, usadas por `docker-compose.yml`:
+
+```env
+# Base de datos
+POSTGRES_USER=docs_user
+POSTGRES_PASSWORD=docs_password
+POSTGRES_DB=docs_db
+POSTGRES_PORT=5432
+
+# Puertos expuestos en tu máquina
+BACKEND_PORT=3000
+FRONTEND_PORT=5173
+```
+
+> Estos valores son solo para desarrollo y pruebas. No los uses en producción.
+
+---
+
+## 🧭 Decisiones Clave
+
+- **PostgreSQL Full-Text Search** (`tsvector` + índice GIN) como base de datos y motor de búsqueda a la vez: una sola pieza de infraestructura y sin consultas `LIKE`.
+- **Prisma** como ORM. Las consultas de texto se ejecutan con `prisma.$queryRaw`, porque el cliente no expone las funciones de full-text search de Postgres.
+- **Carga por REST (multipart)** con respuesta inmediata en estado `PROCESANDO`; el procesamiento e indexación ocurren en segundo plano.
+- **SSE (Server-Sent Events)** para notificar cambios de estado: la comunicación es solo del servidor al cliente y se reconecta automáticamente.
+
+El detalle y la justificación están en [docs/architecture.md](./docs/architecture.md).
 
 ---
 
 ## 🛠️ Stack General
 
-- **Frontend:** React 19, Vite, TypeScript
-- **Backend:** _pendiente de documentar_
-- **Comunicación en tiempo real:** WebSockets / SSE
+| Capa | Tecnología |
+| --- | --- |
+| Frontend | React 19, Vite, TypeScript |
+| Backend | NestJS, TypeScript |
+| Base de datos | PostgreSQL |
+| ORM | Prisma |
+| Motor de búsqueda | PostgreSQL Full-Text Search (`tsvector` + GIN) |
+| Tiempo real | Server-Sent Events (SSE) |
+| Documentación de la API | Swagger (OpenAPI) |
+| Contenedores | Docker y Docker Compose |
+| Pruebas | Vitest |
