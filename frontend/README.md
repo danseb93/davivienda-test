@@ -7,8 +7,8 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 ## 🚀 Características Principales
 
 - **Carga de documentos:** formulario intuitivo para la subida de archivos (TXT, PDF, Markdown) junto con sus metadatos.
-- **Búsqueda avanzada de alto rendimiento:** interfaz conectada al motor de búsqueda optimizado para ofrecer respuestas rápidas y fluidas.
-- **Actualizaciones en tiempo real:** notificaciones visuales instantáneas mediante WebSockets / SSE cuando un documento finaliza su procesamiento o indexación.
+- **Búsqueda avanzada de alto rendimiento:** interfaz conectada al motor de búsqueda optimizado para ofrecer respuestas rápidas y fluidas, con paginación y resaltado de coincidencias.
+- **Actualizaciones en tiempo real:** notificaciones visuales instantáneas mediante SSE (Server-Sent Events) cuando un documento finaliza su procesamiento o indexación.
 - **Visor de documentos integrado:** vista limpia y estructurada para la lectura del contenido técnico y la consulta detallada de metadatos.
 
 ---
@@ -18,7 +18,8 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 - **Framework:** React 19 con **Vite** (empaquetado ultra rápido y desarrollo ágil).
 - **Lenguaje:** **TypeScript** (tipado estricto de extremo a extremo).
 - **Estilos / UI:** componentes modulares y adaptativos para una experiencia de usuario clara y funcional.
-- **Comunicación asíncrona:** cliente WebSockets / SSE integrado para recibir estados en tiempo real.
+- **Comunicación con la API:** cliente HTTP para la carga y la búsqueda de documentos.
+- **Tiempo real:** cliente SSE basado en `EventSource`, con reconexión automática.
 
 ---
 
@@ -28,9 +29,9 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 src/
 ├── assets/         # Recursos estáticos e imágenes
 ├── components/     # Componentes reutilizables (Visor, Tablas, Modales)
-├── hooks/          # Hooks personalizados (gestión de sockets, llamadas API)
+├── hooks/          # Hooks personalizados (eventos SSE, llamadas API)
 ├── pages/          # Vistas principales (Carga, Búsqueda, Detalle)
-├── services/       # Conexiones HTTP y clientes de comunicación en tiempo real
+├── services/       # Cliente HTTP y cliente SSE
 ├── types/          # Interfaces y tipos de TypeScript compartidos
 ├── App.tsx         # Componente raíz y enrutamiento principal
 └── main.tsx        # Punto de entrada de la aplicación
@@ -40,13 +41,13 @@ src/
 
 ## ⚙️ Configuración y Ejecución Local
 
-Sigue estos pasos para levantar el entorno de desarrollo en tu máquina local.
+Sigue estos pasos para levantar el entorno de desarrollo en tu máquina local. El frontend necesita el backend en ejecución: consulta [backend/README.md](../backend/README.md).
 
 ### 1. Prerrequisitos
 
 Asegúrate de tener instalado:
 
-- [Node.js](https://nodejs.org/) (versión 18 o superior recomendada)
+- [Node.js](https://nodejs.org/) 22 o superior
 - npm, pnpm o yarn
 
 ### 2. Instalación de dependencias
@@ -60,12 +61,23 @@ npm install
 
 ### 3. Variables de entorno
 
-Crea un archivo `.env` en la raíz de la carpeta `frontend`, por ejemplo:
+Copia la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Contenido de `.env.example`:
 
 ```env
 VITE_API_URL=http://localhost:3000
-VITE_WS_URL=http://localhost:3000
 ```
+
+| Variable | Descripción |
+| --- | --- |
+| `VITE_API_URL` | URL base de la API. El canal de eventos SSE se consume desde esta misma URL, por lo que no hace falta una variable aparte |
+
+> Este valor es solo para desarrollo. Si cambias el puerto del backend, actualízalo aquí.
 
 ### 4. Ejecución en modo desarrollo
 
@@ -90,3 +102,7 @@ Para previsualizar la compilación de producción localmente:
 ```bash
 npm run preview
 ```
+
+### Con Docker Compose
+
+Para levantar todo el entorno (base de datos, backend y frontend), consulta el [README principal](../README.md#-inicio-rápido).
