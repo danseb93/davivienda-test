@@ -1,0 +1,60 @@
+services:
+  # 1. Base de Datos PostgreSQL con soporte para volúmenes
+  db:
+    image: postgres:16-alpine
+    container_name: docs_postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-docs_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docs_password}
+      POSTGRES_DB: ${POSTGRES_DB:-docs_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docs_user} -d ${POSTGRES_DB:-docs_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Backend (NestJS)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docs_backend_api
+    restart: always
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-docs_user}:${POSTGRES_PASSWORD:-docs_password}@db:5432/${POSTGRES_DB:-docs_db}?schema=public
+      - CORS_ORIGIN=http://localhost:${FRONTEND_PORT:-5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # 3. Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: docs_frontend_app
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      - VITE_API_URL=http://localhost:${BACKEND_PORT:-3000}
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
