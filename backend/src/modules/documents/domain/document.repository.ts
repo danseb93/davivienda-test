@@ -18,10 +18,20 @@ export type UpdateDocumentData = Partial<
   Pick<Document, 'title' | 'author' | 'category' | 'tags' | 'version'>
 >;
 
+export interface DocumentProcessingResult {
+  id: string;
+  status: 'INDEXED' | 'ERROR';
+  updatedAt: Date;
+  error?: unknown;
+}
+
 export interface DocumentRepository {
   findAll(): Promise<Document[]>;
   findById(id: string): Promise<Document | null>;
   create(data: CreateDocumentData): Promise<Document>;
   update(id: string, data: UpdateDocumentData): Promise<Document>;
   delete(id: string): Promise<Document>;
+  processNextPending(
+    extractContent: (document: Document) => Promise<string>,
+  ): Promise<DocumentProcessingResult | null>;
 }

@@ -10,10 +10,12 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 - **Validación de carga:** revisión de formato, contenido y tamaño máximo configurable.
 - **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
 - **Búsqueda full-text:** PostgreSQL `tsvector`/GIN sobre títulos, metadatos y contenido indexado; no utiliza `LIKE`.
+- **Indexación en segundo plano:** el backend procesa cargas pendientes aunque el cliente se desconecte y recupera las pendientes al reiniciar.
+- **Eventos SSE:** `GET /api/v1/realtime/documents/:id` envía el estado actual y sus cambios como eventos `document.status`.
 - **API documentada con Swagger:** referencia interactiva de todos los endpoints.
 - **Manejo estructurado de errores:** validación de datos y filtros de excepciones.
 
-El endpoint de búsqueda y el índice de texto completo forman parte de HU-02. La extracción e indexación asíncrona del contenido y las notificaciones SSE son trabajos separados.
+La carga persiste el archivo y sus metadatos con estado `PROCESSING` y responde sin esperar la extracción. Un worker del backend recupera los trabajos pendientes desde PostgreSQL, extrae el texto TXT/Markdown/PDF, actualiza el contenido y el índice de búsqueda, y cambia el estado a `INDEXED` o `ERROR`. El worker no depende de la conexión del cliente y vuelve a tomar trabajos pendientes después de un reinicio.
 
 ---
 
@@ -40,7 +42,8 @@ La ruta `GET /api/v1/search` acepta `q`, `page` y `pageSize` (máximo 100). Admi
 
 - Un trigger mantiene `searchVector` con título, metadatos, etiquetas y contenido; un índice **GIN** acelera las consultas.
 - Las consultas parametrizadas usan `prisma.$queryRaw`, `websearch_to_tsquery`, `ts_rank_cd` y `ts_headline`; no utilizan `LIKE`.
-- El campo `content` almacena el texto extraído; su extracción y actualización de estado se implementarán en el flujo de procesamiento asíncrono.
+- Solo los documentos `INDEXED` aparecen en los resultados.
+- El worker de indexación actualiza `content`; el trigger refresca `searchVector` en la misma transacción.
 
 ---
 
@@ -52,11 +55,12 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | --- | --- | --- |
 | `GET` | `/api/v1/documents` | Lista todos los documentos y sus metadatos |
 | `GET` | `/api/v1/search?q=motor&page=1&pageSize=20` | Busca documentos por términos o frases con paginación y resaltado |
+| `GET` | `/api/v1/realtime/documents/:id` | SSE con estado actual y cambios `document.status` del documento |
 | `POST` | `/api/v1/documents` | Sube un archivo TXT, PDF o Markdown con metadatos vía multipart |
 | `PATCH` | `/api/v1/documents/:id` | Actualiza metadatos del documento |
 | `DELETE` | `/api/v1/documents/:id` | Elimina el documento y el archivo almacenado |
 
-Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos. La carga conserva el estado `PROCESSING`; el procesamiento asíncrono que extrae el texto y cambia el estado a `INDEXED` o `ERROR` pertenece a otro alcance. El reemplazo del archivo no hace parte de estos endpoints.
+Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz debe abrir el EventSource usando el `id` devuelto por la carga y cerrarlo al recibir un estado terminal. El reemplazo del archivo no hace parte de estos endpoints.
 
 ### Estados de un documento
 
@@ -66,15 +70,15 @@ Los metadatos requeridos para la carga son `title`, `author`, `category` y `vers
 | `INDEXADO` | Disponible para búsqueda y visualización |
 | `ERROR` | Falló el procesamiento |
 
-La carga inicial deja el documento en `PROCESSING`. La transición a `INDEXED` o `ERROR` requiere el procesamiento asíncrono.
+La carga inicial deja el documento en `PROCESSING`. El backend lo actualiza a `INDEXED` o `ERROR` al terminar el procesamiento y emite un evento SSE `document.status` con su `id`, `status` y `updatedAt`.
 
-### Eventos en tiempo real (siguiente etapa)
+### Eventos en tiempo real (SSE)
 
-Está previsto emitir eventos con `Content-Type: text/event-stream` cuando el estado cambie. Ejemplo:
+Con la respuesta de `POST /api/v1/documents`, la interfaz puede suscribirse a `GET /api/v1/realtime/documents/{id}` usando `EventSource`. El endpoint envía inmediatamente el estado actual, y después `document.status` al completarse el procesamiento. La conexión del navegador no controla ni interrumpe el worker.
 
 ```text
 event: document.status
-data: {"id":"3f6c2a1e-0000-0000-0000-000000000000","status":"INDEXADO"}
+data: {"id":"3f6c2a1e-0000-0000-0000-000000000000","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.000Z"}
 ```
 
 El frontend se conecta con `EventSource`, que reconecta automáticamente si se corta la conexión. Para que funcione desde el navegador, el origen del frontend debe estar permitido en `CORS_ORIGIN`.
@@ -93,7 +97,7 @@ backend/
 │   ├── app.module.ts     # Módulo raíz de la aplicación
 │   └── modules/
 |       ├── documents/    # Lógica de carga, procesamiento y almacenamiento
-|       ├── events/       # Canal de eventos en tiempo real (SSE)
+|       ├── realtime/     # Canal de eventos en tiempo real (SSE)
 |       └── search/       # Módulo de búsqueda optimizada (Full-Text Search)
 ├── test/                 # Pruebas e2e y unitarias
 ├── .env.example          # Plantilla de variables de entorno

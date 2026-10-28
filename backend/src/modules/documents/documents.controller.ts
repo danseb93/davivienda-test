@@ -59,6 +59,23 @@ export class DocumentsController {
     };
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a document by ID' })
+  @ApiOkResponse({ type: DocumentResponseDto })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async findById(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<DocumentResponseDto> {
+    const { storageName: _storageName, content: _content, ...data } =
+      await this.documentFinder.findById(id);
+    return {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Document retrieved successfully',
+      data,
+    };
+  }
+
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload a document with its metadata' })

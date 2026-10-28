@@ -11,8 +11,8 @@ RUN npm install
 # Copiar el resto del código (incluyendo la carpeta prisma)
 COPY . .
 
-RUN npx prisma generate dev
+RUN npx prisma generate
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:dev"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:dev"]

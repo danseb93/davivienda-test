@@ -55,7 +55,8 @@ export class PrismaSearchRepository implements SearchRepository {
           ) AS "snippet",
           ts_rank_cd(d."searchVector", ${tsQuery}) AS "rank"
         FROM "Document" AS d
-        WHERE d."searchVector" @@ ${tsQuery}
+        WHERE d."status" = 'INDEXED'::"DocumentStatus"
+          AND d."searchVector" @@ ${tsQuery}
         ORDER BY "rank" DESC, d."createdAt" DESC
         LIMIT ${query.limit}
         OFFSET ${query.offset}
@@ -63,7 +64,8 @@ export class PrismaSearchRepository implements SearchRepository {
       this.prisma.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT count(*) AS "total"
         FROM "Document" AS d
-        WHERE d."searchVector" @@ ${tsQuery}
+        WHERE d."status" = 'INDEXED'::"DocumentStatus"
+          AND d."searchVector" @@ ${tsQuery}
       `),
     ]);
 

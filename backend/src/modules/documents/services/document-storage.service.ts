@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
 
 const ACCEPTED_TYPES: Record<string, string[]> = {
@@ -84,6 +84,10 @@ export class DocumentStorageService {
         'The document file could not be removed',
       );
     }
+  }
+
+  read(storageName: string): Promise<Buffer> {
+    return readFile(this.resolveStoredFile(storageName));
   }
 
   private resolveStoredFile(storageName: string): string {
