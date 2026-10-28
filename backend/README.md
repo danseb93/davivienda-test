@@ -132,29 +132,39 @@ cp .env.example .env
 Contenido de `.env.example`:
 
 ```env
-NODE_ENV=development
+# ==============================================
+# 🌐 APPLICATION CONFIGURATION
+# ==============================================
 PORT=3000
-DATABASE_URL="postgresql://docs_user:docs_password@localhost:5432/docs_db?schema=public"
-MAX_FILE_SIZE_MB=10
+NODE_ENV=development
+MAX_FILE_SIZE_MB=25
+# ==============================================
+# 🗄️ DATABASE CONFIGURATION
+# ==============================================
+DATABASE_URL=postgresql://docs_user:docs_password@localhost:5432/docs_db_test?schema=public
+DATABASE_MAX_POOL_SIZE=10
+DATABASE_CONNECTION_TIMEOUT_MS=5000
+DATABASE_IDLE_TIMEOUT_MS=30000
+# ==============================================
+# 📚 SWAGGER DOCUMENTATION CONFIGURATION
+# ==============================================
+SWAGGER_USER=admin
+SWAGGER_PASSWORD=Test1234@
 ```
 
 | Variable | Descripción |
 | --- | --- |
 | `NODE_ENV` | Entorno de ejecución (`development`, `test`, `production`) |
 | `PORT` | Puerto de la API |
-| `DATABASE_URL` | Cadena de conexión a PostgreSQL. Dentro de Docker Compose el host es `db` en lugar de `localhost` |
 | `MAX_FILE_SIZE_MB` | Tamaño máximo permitido por archivo cargado |
+| `DATABASE_URL` | Cadena de conexión a PostgreSQL. Usado por Prisma. |
+| `DATABASE_MAX_POOL_SIZE` | Tamaño máximo del pool de conexiones de la DB. |
+| `DATABASE_CONNECTION_TIMEOUT_MS` | Tiempo máximo de espera para establecer conexión con la DB. |
+| `DATABASE_IDLE_TIMEOUT_MS` | Tiempo de inactividad antes de cerrar una conexión de la DB. |
+| `SWAGGER_USER` | Usuario para acceder a la documentación de Swagger |
+| `SWAGGER_PASSWORD` | Contraseña para acceder a la documentación de Swagger |
 
 Variables para las pruebas e2e, en `.env.test` (usan una base de datos separada):
-
-```env
-NODE_ENV=test
-PORT=3000
-DATABASE_URL="postgresql://docs_user:docs_password@localhost:5432/docs_db_test?schema=public"
-MAX_FILE_SIZE_MB=1
-```
-
-> Estos valores son solo para desarrollo y pruebas. No los uses en producción.
 
 ### 4. Base de datos
 
