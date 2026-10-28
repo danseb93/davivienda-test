@@ -11,6 +11,19 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>("PORT") || 3000;
+  const corsOrigins = (
+    configService.get<string>("CORS_ORIGIN") ??
+    "http://localhost:5173,http://127.0.0.1:5173"
+  )
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: corsOrigins,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Accept", "Content-Type"],
+  });
 
   // Establecer el prefijo global para todas las rutas
   app.setGlobalPrefix("api");
@@ -50,4 +63,3 @@ bootstrap().catch((error) => {
   console.error("Error starting application:", error);
   process.exit(1);
 });
-

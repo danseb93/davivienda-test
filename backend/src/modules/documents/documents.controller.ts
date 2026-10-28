@@ -8,9 +8,12 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBody,
   ApiCreatedResponse,
@@ -32,6 +35,7 @@ import { DocumentCreatorService } from './services/document-creator.service.js';
 import { DocumentFinderService } from './services/document-finder.service.js';
 import { DocumentRemoverService } from './services/document-remover.service.js';
 import { DocumentUpdaterService } from './services/document-updater.service.js';
+import { DocumentStorageService } from './services/document-storage.service.js';
 
 @ApiTags('Documents')
 @Controller('documents')
@@ -41,6 +45,7 @@ export class DocumentsController {
     private readonly documentCreator: DocumentCreatorService,
     private readonly documentUpdater: DocumentUpdaterService,
     private readonly documentRemover: DocumentRemoverService,
+    private readonly documentStorage: DocumentStorageService,
   ) {}
 
   @Get()
@@ -74,6 +79,35 @@ export class DocumentsController {
       message: 'Document retrieved successfully',
       data,
     };
+  }
+
+  @Get(':id/file')
+  @ApiOperation({ summary: 'Stream the original document file for preview' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async getOriginalFile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const document = await this.documentFinder.findById(id);
+    const file = await this.documentStorage.read(document.storageName);
+    const encodedFileName = encodeURIComponent(document.fileName).replace(
+      /[!'()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+
+    response.setHeader('Content-Type', document.mimeType);
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodedFileName}`,
+    );
+    response.setHeader(
+      'Access-Control-Expose-Headers',
+      'Content-Disposition, X-Document-Name',
+    );
+    response.setHeader('X-Document-Name', encodedFileName);
+    response.setHeader('Cache-Control', 'private, no-store');
+
+    return new StreamableFile(file);
   }
 
   @Post()

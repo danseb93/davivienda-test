@@ -1,5 +1,27 @@
+import type { ApiDocument } from '../interfaces/api.interface'
+import type { DocumentItem } from '../interfaces/document.interface'
+
 export function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function mapApiDocument(document: ApiDocument): DocumentItem {
+  return {
+    id: document.id,
+    filename: document.fileName,
+    mimeType: document.mimeType,
+    title: document.title,
+    author: document.author,
+    category: document.category,
+    version: document.version,
+    tags: document.tags,
+    size: document.fileSize,
+    uploadedAt: new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(document.updatedAt)),
+    status: document.status,
+  }
 }
 
 export function formatFileSize(bytes: number) {

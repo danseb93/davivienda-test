@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from 'react'
 import type { DocumentForm, DocumentItem } from '../interfaces/document.interface'
-import { documentCategories } from '../data/mockDocuments'
+import { documentCategories } from '../data/documentCategories'
 import { Icon } from './Icon'
 
 interface DocumentModalsProps {

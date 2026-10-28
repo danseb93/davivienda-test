@@ -7,6 +7,7 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 ## 🚀 Características Principales
 
 - **CRUD de documentos:** listado, carga multipart de archivos TXT/PDF/Markdown con metadatos, actualización de metadatos y eliminación del archivo.
+- **Vista del archivo original:** endpoint de lectura inline para previsualizar el archivo almacenado (PDF, TXT o Markdown).
 - **Validación de carga:** revisión de formato, contenido y tamaño máximo configurable.
 - **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
 - **Búsqueda full-text:** PostgreSQL `tsvector`/GIN sobre títulos, metadatos y contenido indexado; no utiliza `LIKE`.
@@ -54,13 +55,17 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | `GET` | `/api/v1/documents` | Lista todos los documentos y sus metadatos |
+| `GET` | `/api/v1/documents/:id` | Consulta los metadatos y el estado de un documento |
+| `GET` | `/api/v1/documents/:id/file` | Sirve el archivo original para previsualización inline |
 | `GET` | `/api/v1/search?q=motor&page=1&pageSize=20` | Busca documentos por términos o frases con paginación y resaltado |
 | `GET` | `/api/v1/realtime/documents/:id` | SSE con estado actual y cambios `document.status` del documento |
 | `POST` | `/api/v1/documents` | Sube un archivo TXT, PDF o Markdown con metadatos vía multipart |
 | `PATCH` | `/api/v1/documents/:id` | Actualiza metadatos del documento |
 | `DELETE` | `/api/v1/documents/:id` | Elimina el documento y el archivo almacenado |
 
-Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz debe abrir el EventSource usando el `id` devuelto por la carga y cerrarlo al recibir un estado terminal. El reemplazo del archivo no hace parte de estos endpoints.
+Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Cada `POST /api/v1/documents` recibe **un archivo** y sus metadatos; para cargar varios, el frontend envía una petición por archivo (por ejemplo, con hasta tres cargas concurrentes) y puede limitar cada selección a 20 archivos. Cada archivo obtiene su propio ID, estado y stream SSE. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz debe abrir el EventSource usando el `id` devuelto por la carga y cerrarlo al recibir un estado terminal. El reemplazo del archivo no hace parte de estos endpoints.
+
+El endpoint `GET /api/v1/documents/:id/file` devuelve el **archivo binario original** con `Content-Disposition: inline` y su tipo MIME. El frontend renderiza los PDF con PDF.js y carga TXT/Markdown para el resaltado. `GET /api/v1/documents/:id` continúa devolviendo solo metadatos; el texto extraído no se expone como contenido completo.
 
 ### Estados de un documento
 

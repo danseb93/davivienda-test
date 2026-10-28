@@ -55,6 +55,57 @@ button {
   animation: modal-enter 160ms ease-out both;
 }
 
+.document-drawer {
+  animation: drawer-enter 220ms ease-out both;
+}
+
+.pdf-page {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+.pdf-page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color-scheme: only light;
+  text-align: initial;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  transform-origin: 0 0;
+  caret-color: transparent;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-page .textLayer > :not(.markedContent),
+.pdf-page .textLayer .markedContent span:not(.markedContent) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate, 0deg)) scaleX(var(--scale-x, 1)) scale(var(--min-font-size-inv));
+}
+
+.pdf-page .textLayer .pdf-search-highlight {
+  color: transparent;
+  background: rgb(255 190 45 / 55%);
+  box-shadow: 0 0 0 1px rgb(237 28 36 / 40%);
+}
+
 @keyframes toast-enter {
   from {
     opacity: 0;
@@ -74,5 +125,14 @@ button {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drawer-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
   }
 }

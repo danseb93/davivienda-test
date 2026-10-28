@@ -3,6 +3,7 @@ import type { DocumentStatus, ToastKind, UploadStage } from '../types/document.t
 export interface DocumentItem {
   id: string
   filename: string
+  mimeType: string
   title: string
   author: string
   category: string
@@ -19,6 +20,7 @@ export interface UploadItem {
   size: number
   progress: number
   stage: UploadStage
+  error?: string
 }
 
 export interface ToastMessage {

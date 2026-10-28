@@ -1,0 +1,56 @@
+import { StreamableFile } from '@nestjs/common';
+import type { Response } from 'express';
+import { DocumentsController } from './documents.controller.js';
+import { Document } from './domain/document.entity.js';
+import { DocumentCreatorService } from './services/document-creator.service.js';
+import { DocumentFinderService } from './services/document-finder.service.js';
+import { DocumentRemoverService } from './services/document-remover.service.js';
+import { DocumentStorageService } from './services/document-storage.service.js';
+import { DocumentUpdaterService } from './services/document-updater.service.js';
+
+describe('DocumentsController original file preview', () => {
+  it('streams the stored original with its safe inline filename and content type', async () => {
+    const document: Document = {
+      id: 'ad0d232a-f65b-4aeb-b4a5-1bc188c1d097',
+      title: 'Guide',
+      author: 'Team',
+      category: 'Manuals',
+      tags: [],
+      version: '1.0',
+      content: '',
+      fileName: 'guide (final).pdf',
+      storageName: 'stored-file.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 10,
+      status: 'INDEXED',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const file = Buffer.from('%PDF-1.7');
+    const findById = vi.fn().mockResolvedValue(document);
+    const read = vi.fn().mockResolvedValue(file);
+    const setHeader = vi.fn();
+    const controller = new DocumentsController(
+      { findAll: vi.fn(), findById } as DocumentFinderService,
+      { create: vi.fn() } as unknown as DocumentCreatorService,
+      { update: vi.fn() } as unknown as DocumentUpdaterService,
+      { remove: vi.fn() } as unknown as DocumentRemoverService,
+      { read, store: vi.fn(), remove: vi.fn() } as DocumentStorageService,
+    );
+
+    const result = await controller.getOriginalFile(
+      document.id,
+      { setHeader } as unknown as Response,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(findById).toHaveBeenCalledWith(document.id);
+    expect(read).toHaveBeenCalledWith(document.storageName);
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    expect(setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      "inline; filename*=UTF-8''guide%20%28final%29.pdf",
+    );
+    expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+  });
+});

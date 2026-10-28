@@ -26,15 +26,18 @@ export function UploadQueue({ uploads, onClearCompleted }: UploadQueueProps) {
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <p className="truncate text-sm font-medium text-[#333]">{upload.filename}</p>
-                <span className="flex shrink-0 items-center gap-1.5 text-xs text-[#707070]">
+                <span className={`flex shrink-0 items-center gap-1.5 text-xs ${upload.stage === 'error' ? 'text-rose-600' : 'text-[#707070]'}`}>
+                  {upload.stage === 'queued' && 'En cola'}
                   {upload.stage === 'uploading' && `${upload.progress}%`}
                   {upload.stage === 'processing' && <><Icon name="clock" className="h-3.5 w-3.5 animate-spin" /> Procesando e indexando</>}
                   {upload.stage === 'done' && <><Icon name="check" className="h-3.5 w-3.5 text-emerald-600" /> Cargado e indexado</>}
+                  {upload.stage === 'error' && <><Icon name="alert" className="h-3.5 w-3.5" /> Error de carga</>}
                 </span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[#eeeeee]">
-                <div className={`h-full rounded-full transition-all duration-300 ${upload.stage === 'done' ? 'bg-emerald-500' : upload.stage === 'processing' ? 'bg-amber-400' : 'bg-[#ed1c24]'}`} style={{ width: `${upload.progress}%` }} />
+                <div className={`h-full rounded-full transition-all duration-300 ${upload.stage === 'done' ? 'bg-emerald-500' : upload.stage === 'error' ? 'bg-rose-500' : upload.stage === 'processing' ? 'bg-amber-400' : 'bg-[#ed1c24]'}`} style={{ width: `${upload.progress}%` }} />
               </div>
+              {upload.error && <p className="mt-1 text-[11px] text-rose-600">{upload.error}</p>}
               <p className="mt-1 text-[11px] text-[#8a8a8a]">{formatFileSize(upload.size)}</p>
             </div>
           </div>

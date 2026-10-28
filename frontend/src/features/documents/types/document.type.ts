@@ -1,5 +1,5 @@
 export type DocumentStatus = 'PROCESSING' | 'INDEXED' | 'ERROR'
-export type UploadStage = 'uploading' | 'processing' | 'done'
+export type UploadStage = 'queued' | 'uploading' | 'processing' | 'done' | 'error'
 export type ToastKind = 'success' | 'error' | 'info'
 export type DocumentFilter = 'ALL' | DocumentStatus
 export type SummaryAccent = 'red' | 'green' | 'amber'
@@ -15,4 +15,4 @@ export type IconName =
   | 'alert'
   | 'bell'
   | 'spark'
-
+  | 'chevron'
