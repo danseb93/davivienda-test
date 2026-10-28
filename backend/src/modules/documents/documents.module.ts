@@ -10,10 +10,14 @@ import { DocumentFinderService } from './services/document-finder.service.js';
 import { DocumentRemoverService } from './services/document-remover.service.js';
 import { DocumentStorageService } from './services/document-storage.service.js';
 import { DocumentUpdaterService } from './services/document-updater.service.js';
+import { DocumentContentExtractorService } from './services/document-content-extractor.service.js';
+import { DocumentIndexingService } from './services/document-indexing.service.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 
 @Module({
   imports: [
     PrismaModule,
+    RealtimeModule,
     MulterModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -39,6 +43,8 @@ import { DocumentUpdaterService } from './services/document-updater.service.js';
     DocumentUpdaterService,
     DocumentRemoverService,
     DocumentStorageService,
+    DocumentContentExtractorService,
+    DocumentIndexingService,
     {
       provide: 'DocumentRepository',
       useClass: PrismaDocumentRepository,

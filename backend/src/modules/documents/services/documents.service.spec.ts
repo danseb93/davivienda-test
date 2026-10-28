@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DocumentRepository } from '../domain/document.repository.js';
 import { CreateDocumentDto, UpdateDocumentDto } from '../dto/document.dto.js';
 import { DocumentCreatorService } from './document-creator.service.js';
+import { DocumentFinderService } from './document-finder.service.js';
 import { DocumentUpdaterService } from './document-updater.service.js';
 
 describe('document services', () => {
@@ -29,6 +30,7 @@ describe('document services', () => {
       create,
       update: vi.fn(),
       delete: vi.fn(),
+      processNextPending: vi.fn(),
     };
     const storage = {
       store: vi.fn().mockResolvedValue('stored-file.pdf'),
@@ -66,6 +68,7 @@ describe('document services', () => {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      processNextPending: vi.fn(),
     };
     const storage = { store: vi.fn(), remove: vi.fn() };
     const service = new DocumentCreatorService(repository, storage);
@@ -83,6 +86,7 @@ describe('document services', () => {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      processNextPending: vi.fn(),
     };
     const service = new DocumentUpdaterService(repository);
 
@@ -98,11 +102,44 @@ describe('document services', () => {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      processNextPending: vi.fn(),
     };
     const service = new DocumentUpdaterService(repository);
 
     await expect(
       service.update(document.id, { title: 'New title' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('finds a document by ID', async () => {
+    const findById = vi.fn().mockResolvedValue(document);
+    const repository: DocumentRepository = {
+      findAll: vi.fn(),
+      findById,
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      processNextPending: vi.fn(),
+    };
+    const service = new DocumentFinderService(repository);
+
+    await expect(service.findById(document.id)).resolves.toEqual(document);
+    expect(findById).toHaveBeenCalledWith(document.id);
+  });
+
+  it('returns not found when looking up a missing document', async () => {
+    const repository: DocumentRepository = {
+      findAll: vi.fn(),
+      findById: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      processNextPending: vi.fn(),
+    };
+    const service = new DocumentFinderService(repository);
+
+    await expect(service.findById(document.id)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
