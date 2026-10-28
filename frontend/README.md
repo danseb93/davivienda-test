@@ -6,6 +6,7 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 ## 🚀 Características Principales
 
+- **Prototipo UI con datos mock:** la vista principal permite explorar, buscar, filtrar, cargar varios documentos y simular su progreso de procesamiento e indexación; no realiza llamadas al backend.
 - **Carga de documentos:** formulario intuitivo para la subida de archivos (TXT, PDF, Markdown) junto con sus metadatos.
 - **Búsqueda avanzada de alto rendimiento:** interfaz conectada al motor de búsqueda optimizado para ofrecer respuestas rápidas y fluidas, con paginación y resaltado de coincidencias.
 - **Actualizaciones en tiempo real:** notificaciones visuales instantáneas mediante SSE (Server-Sent Events) cuando un documento finaliza su procesamiento o indexación.
@@ -27,23 +28,20 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 ```text
 src/
-├── app/                  # Configuración global (Router, Providers, Store)
-├── components/           # Componentes UI globales o genéricos (Botones, Modales)
-├── features/             # Módulos de negocio independientes
-│   ├── auth/             # Módulo de autenticación
-│   │   ├── components/   # Componentes exclusivos de auth
-│   │   ├── hooks/        # Hooks exclusivos de auth
-|   |   ├── screens/      # Vistas del feature
-│   │   ├── services/     # Llamadas API de auth
-│   │   └── types/        # Tipos e interfaces de auth
-│   └── documents/        # Módulo de documentos
-│       ├── components/
-│       ├── hooks/
-|       ├── screens/      
-│       └── services/
-├── hooks/                # Hooks globales reutilizables
-├── services/             # Clientes HTTP globales (Axios, Fetch)
-└── utils/                # Utilidades y funciones de ayuda
+├── app/                               # Configuración global (Router, Providers, Store)
+├── components/                        # Componentes UI globales o genéricos
+├── features/
+│   └── documents/
+│       ├── components/                # Componentes de documentos
+│       ├── data/                      # Datos mock
+│       ├── hooks/                     # Estado y lógica del feature
+│       ├── interfaces/                # Interfaces de documentos
+│       ├── screens/                   # Pantallas del feature
+│       ├── types/                     # Tipos compartidos del feature
+│       └── utils/                     # Utilidades del feature
+├── hooks/                             # Hooks globales reutilizables
+├── services/                          # Clientes HTTP globales (Axios, Fetch)
+└── utils/                             # Utilidades y funciones de ayuda
 ```
 
 ---
