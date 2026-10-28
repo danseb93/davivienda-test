@@ -80,22 +80,6 @@ Cada módulo tiene su propio archivo `.env.example` que sirve de plantilla. Los 
 | Backend | `backend/.env` y `backend/.env.test` | [backend/README.md](./backend/README.md#3-variables-de-entorno) |
 | Frontend | `frontend/.env` | [frontend/README.md](./frontend/README.md#3-variables-de-entorno) |
 
-Variables de la raíz, usadas por `docker-compose.yml`:
-
-```env
-# Base de datos
-POSTGRES_USER=docs_user
-POSTGRES_PASSWORD=docs_password
-POSTGRES_DB=docs_db
-POSTGRES_PORT=5432
-
-# Puertos expuestos en tu máquina
-BACKEND_PORT=3000
-FRONTEND_PORT=5173
-```
-
-> Estos valores son solo para desarrollo y pruebas. No los uses en producción.
-
 ---
 
 ## 🧭 Decisiones Clave

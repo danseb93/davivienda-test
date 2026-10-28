@@ -27,14 +27,23 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 ```text
 src/
-├── assets/         # Recursos estáticos e imágenes
-├── components/     # Componentes reutilizables (Visor, Tablas, Modales)
-├── hooks/          # Hooks personalizados (eventos SSE, llamadas API)
-├── pages/          # Vistas principales (Carga, Búsqueda, Detalle)
-├── services/       # Cliente HTTP y cliente SSE
-├── types/          # Interfaces y tipos de TypeScript compartidos
-├── App.tsx         # Componente raíz y enrutamiento principal
-└── main.tsx        # Punto de entrada de la aplicación
+├── app/                  # Configuración global (Router, Providers, Store)
+├── components/           # Componentes UI globales o genéricos (Botones, Modales)
+├── features/             # Módulos de negocio independientes
+│   ├── auth/             # Módulo de autenticación
+│   │   ├── components/   # Componentes exclusivos de auth
+│   │   ├── hooks/        # Hooks exclusivos de auth
+|   |   ├── screens/      # Vistas del feature
+│   │   ├── services/     # Llamadas API de auth
+│   │   └── types/        # Tipos e interfaces de auth
+│   └── documents/        # Módulo de documentos
+│       ├── components/
+│       ├── hooks/
+|       ├── screens/      
+│       └── services/
+├── hooks/                # Hooks globales reutilizables
+├── services/             # Clientes HTTP globales (Axios, Fetch)
+└── utils/                # Utilidades y funciones de ayuda
 ```
 
 ---
