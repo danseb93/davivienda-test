@@ -16,6 +16,12 @@ const ACCEPTED_TYPES: Record<string, string[]> = {
     'text/plain',
     'application/octet-stream',
   ],
+  '.markdown': [
+    'text/markdown',
+    'text/x-markdown',
+    'text/plain',
+    'application/octet-stream',
+  ],
   '.pdf': ['application/pdf'],
 };
 

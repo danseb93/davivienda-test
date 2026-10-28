@@ -1,12 +1,7 @@
-function App() {
+import DocumentsScreen from './features/documents/screens/DocumentsScreen'
 
-  return (
-    <>
-      <section>
-        Test
-      </section>
-    </>
-  )
+function App() {
+  return <DocumentsScreen />
 }
 
 export default App

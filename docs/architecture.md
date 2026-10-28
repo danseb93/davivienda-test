@@ -206,7 +206,7 @@ En la práctica, los `.spec.ts` sustituyen los adaptadores por dobles, y cambiar
 - Swagger queda detrás de Basic Auth (`SWAGGER_USER`/`SWAGGER_PASSWORD`). Si falla el `INSERT`, el archivo ya escrito se elimina (`document-creator.service.ts`).
 - La transacción de indexación usa `maxWait: 10 s` y `timeout: 300 s`, pensados para extracciones largas de PDF.
 
-**Deuda detectada al revisar el código** (no se documenta como implementada): `backend/src/main.ts` no llama a `app.enableCors()` y no existe la variable `CORS_ORIGIN`, aunque `backend/README.md` la menciona. Con el frontend y el backend en orígenes distintos (`localhost:5173` hacia `localhost:3000`), el navegador rechazaría las peticiones cross-origin, incluido el `EventSource`. **Acción pendiente:** habilitar CORS con una lista blanca de orígenes definida por variable de entorno. El resto del documento describe solo lo que sí está implementado.
+El backend habilita CORS con los orígenes configurados en `CORS_ORIGIN` (lista separada por comas; por defecto `http://localhost:5173,http://127.0.0.1:5173`) para que REST y `EventSource` funcionen desde el navegador.
 
 ---
 
@@ -313,6 +313,7 @@ La capa HTTP es **stateless**. Varias réplicas detrás de un balanceador funcio
 | `POST /api/v1/documents` | `DocumentsController.create` | `DocumentCreatorService` + `DocumentStorageService` | Multipart TXT/PDF/MD con metadatos. Responde `201` en `PROCESSING` |
 | `GET /api/v1/documents` | `findAll` | `DocumentFinderService` | Listado de metadatos (sin `content` ni `storageName`) |
 | `GET /api/v1/documents/:id` | `findById` | `DocumentFinderService` | Detalle de un documento |
+| `GET /api/v1/documents/:id/file` | `getOriginalFile` | `DocumentFinderService` + `DocumentStorageService` | Transmite el archivo original para previsualizar |
 | `PATCH /api/v1/documents/:id` | `update` | `DocumentUpdaterService` | Actualiza metadatos. El trigger refresca `searchVector` |
 | `DELETE /api/v1/documents/:id` | `remove` | `DocumentRemoverService` | Elimina la fila y el archivo almacenado |
 | `GET /api/v1/search` | `SearchController.search` | `DocumentSearchService` + `PrismaSearchRepository` | Full-text con ranking, paginación y `<mark>` |
