@@ -391,8 +391,8 @@ Toda búsqueda debe responder entre 400 ms y 1 s, prohíbe `LIKE` y equivalentes
 | **PostgreSQL FTS** | Ver §2.3 |
 | **OCRmyPDF + Tesseract** | En PDFs, `--skip-text` conserva las páginas que ya tienen texto y agrega OCR invisible a las páginas escaneadas. Idiomas configurables (`OCR_LANGUAGES`, por defecto `spa+eng`) y timeout (`OCR_TIMEOUT_SECONDS`). El original no se modifica; la copia buscable es el PDF del visor y alimenta `pdf-parse` para indexar el texto |
 | **pdf-parse (`PDFParse`)** | Extrae el texto del PDF buscable para PostgreSQL FTS. TXT y Markdown se leen como UTF-8. El parser se libera con `finally { parser.destroy() }` |
-| **Multer `memoryStorage()`** | El buffer ya hace falta para validar la cabecera `%PDF-` y la ausencia de bytes nulos antes de escribir en disco. Límite por `MAX_FILE_SIZE_MB` (25 MB por defecto) |
-| **Vitest (+ Supertest en e2e)** | Un solo runner para pruebas unitarias e de integración con ESM/TS. Las e2e usan una base separada, `docs_db_test` |
+| **Multer `memoryStorage()`** | El buffer inspecciona los primeros bytes del archivo para detectar bytes nulos y validar la cabecera `%PDF-` antes de escribir en disco. Límite por `MAX_FILE_SIZE_MB` (25 MB por defecto) |
+| **Vitest** | Un solo runner para pruebas unitarias e de integración con ESM/TS |
 | **Docker Compose** | `db` con healthcheck, `backend` con `depends_on: service_healthy` y `npx prisma migrate deploy` al arrancar (Dockerfile), y `frontend` dependiente de `backend` |
 
 ### 2.3 Motor de búsqueda: PostgreSQL FTS frente a Elasticsearch, Meilisearch o Typesense
@@ -526,7 +526,7 @@ La capa HTTP es **stateless**. Varias réplicas detrás de un balanceador funcio
 ### 4.4 Observabilidad y pruebas
 
 - `Logger` en el worker y en el creador, con el stack del fallo de indexación, para auditar por qué un documento quedó en `ERROR`.
-- Pruebas que fijan el comportamiento crítico: `document-indexing.service.spec.ts`, `prisma-document.repository.spec.ts` (transacción y `SKIP LOCKED`), `realtime-event.service.spec.ts` y `realtime.controller.spec.ts` (evento `document.status` en el stream global), además de `test/app.e2e-spec.ts` sobre `docs_db_test`.
+- Pruebas que fijan el comportamiento crítico: `document-indexing.service.spec.ts`, `prisma-document.repository.spec.ts` (transacción y `SKIP LOCKED`), `realtime-event.service.spec.ts` y `realtime.controller.spec.ts` (evento `document.status` en el stream global).
 - Métricas recomendadas para operar el SLA de 400 ms a 1 s: p95 de `/search`, edad de la cola (`now() - min(createdAt) WHERE status='PROCESSING'`), tasa de `ERROR` y conexiones SSE activas.
 
 ---

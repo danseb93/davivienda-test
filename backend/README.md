@@ -32,7 +32,7 @@ La carga persiste el archivo original y sus metadatos con estado `PROCESSING` y 
 | Motor de búsqueda | PostgreSQL Full-Text Search (`tsvector` + índice GIN) |
 | Tiempo real | Server-Sent Events (SSE) |
 | Documentación de la API | Swagger (OpenAPI) |
-| Pruebas | Vitest + Supertest |
+| Pruebas | Vitest |
 | Calidad de código | oxlint (con tipos) y Prettier |
 | Contenedores | Docker y Docker Compose |
 
@@ -98,19 +98,36 @@ El frontend se conecta con `EventSource`, que reconecta automáticamente si se c
 ```text
 backend/
 ├── prisma/
-│   ├── schema.prisma     # Modelos de datos y configuración de Prisma
-│   └── migrations/       # Migraciones SQL (incluye índices GIN y funciones tsvector)
+│   ├── schema.prisma             # Modelos de datos y configuración de Prisma
+│   └── migrations/               # Migraciones SQL e índices de búsqueda
 ├── src/
-│   ├── main.ts           # Inicialización, CORS y documentación Swagger
-│   ├── app.module.ts     # Módulo raíz de la aplicación
-│   └── modules/
-|       ├── documents/    # Lógica de carga, procesamiento y almacenamiento
-|       ├── realtime/     # Canal de eventos en tiempo real (SSE)
-|       └── search/       # Módulo de búsqueda optimizada (Full-Text Search)
-├── test/                 # Pruebas e2e y unitarias
-├── .env.example          # Plantilla de variables de entorno
-└── .env.test             # Variables de entorno para pruebas
+│   ├── common/                   # DTO y tipos compartidos
+│   ├── config/                   # Configuración de CORS y Swagger
+│   ├── modules/
+│   │   ├── documents/            # Carga, almacenamiento, OCR e indexación
+│   │   │   ├── domain/
+│   │   │   ├── dto/
+│   │   │   ├── infrastructure/prisma/
+│   │   │   └── services/
+│   │   ├── realtime/             # Eventos de estado en tiempo real (SSE)
+│   │       ├── domain/
+│   │       └── services/
+│   │   └── search/               # Búsqueda full-text
+│   │       ├── domain/
+│   │       ├── dto/
+│   │       ├── infrastructure/prisma/
+│   │       └── services/
+│   ├── prisma/                   # Módulo y servicio de Prisma
+│   ├── app.module.ts             # Módulo raíz de la aplicación
+│   └── main.ts                   # Inicialización, CORS y Swagger
+├── uploads/documents/            # Archivos originales y derivados OCR (ignorado por Git)
+├── .env.example                  # Plantilla de variables de entorno
+├── Dockerfile
+├── package.json
+└── vitest.config.ts
 ```
+
+Las pruebas unitarias (`*.spec.ts`) están junto al código que prueban.
 
 ---
 
@@ -177,8 +194,6 @@ SWAGGER_PASSWORD=Test1234@
 | `SWAGGER_USER` | Usuario para acceder a la documentación de Swagger |
 | `SWAGGER_PASSWORD` | Contraseña para acceder a la documentación de Swagger |
 
-Variables para las pruebas e2e, en `.env.test` (usan una base de datos separada):
-
 ### 4. Base de datos
 
 Desde la raíz del repositorio, levanta PostgreSQL:
@@ -227,20 +242,19 @@ Para levantar todo el entorno (base de datos, backend y frontend), consulta el [
 | `npm run test` | Ejecuta las pruebas unitarias |
 | `npm run test:watch` | Pruebas en modo watch |
 | `npm run test:cov` | Pruebas con reporte de cobertura |
-| `npm run test:e2e` | Pruebas end-to-end |
 
 ---
 
 ## 🧪 Pruebas
 
-Las pruebas unitarias no necesitan base de datos:
+Las pruebas unitarias y de integración no necesitan base de datos:
 
 ```bash
-npm run test       # unitarias e integración
+npm test           # unitarias e integración
 npm run test:cov   # cobertura
 ```
 
-Las pruebas e2e usan una base de datos propia (`docs_db_test`), definida en `.env.test`. Créala una vez y aplica las migraciones:
+No hay pruebas end-to-end por ahora. Las pruebas unitarias y de integración de servicios y repositorios se ejecutan con Vitest; si más adelante se agregan pruebas HTTP que requieran persistencia, deben usar una base aislada (`docs_db_test`).
 
 ```bash
 # Crear la base de datos de pruebas (desde la raíz del repositorio)
@@ -249,6 +263,4 @@ docker compose exec db createdb -U docs_user docs_db_test
 # Aplicar las migraciones sobre la base de pruebas (desde backend/)
 DATABASE_URL="postgresql://docs_user:docs_password@localhost:5432/docs_db_test?schema=public" npx prisma migrate deploy
 
-# Ejecutar las pruebas e2e
-npm run test:e2e
 ```
