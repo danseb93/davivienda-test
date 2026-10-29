@@ -5,6 +5,21 @@ export interface ApiResponse<T> {
   success: boolean
   message: string
   data: T
+  pagination?: ApiPagination
+}
+
+export interface ApiPagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+export interface ApiDocumentCounts {
+  total: number
+  indexed: number
+  processing: number
+  error: number
 }
 
 export interface ApiDocument {
@@ -35,10 +50,12 @@ export interface ApiSearchResult {
 
 export interface ApiSearchPage {
   items: ApiSearchResult[]
-  total: number
-  page: number
-  pageSize: number
-  totalPages: number
+  pagination: ApiPagination
+}
+
+export interface ApiDocumentPage {
+  items: ApiDocument[]
+  pagination: ApiPagination
 }
 
 export interface UploadMetadata {
@@ -51,6 +68,7 @@ export interface UploadMetadata {
 
 export interface DocumentStatusEvent {
   id: string
+  title: string
   status: DocumentStatus
   updatedAt: string
 }

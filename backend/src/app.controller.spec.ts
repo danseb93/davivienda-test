@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -8,15 +7,19 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
     }).compile();
 
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+  describe('getStatus', () => {
+    it('should return the API status', () => {
+      expect(appController.getStatus()).toEqual({
+        success: true,
+        message: 'Davivienda Test is running!',
+        statusCode: 200,
+        data: null,
+      });
     });
   });
 });

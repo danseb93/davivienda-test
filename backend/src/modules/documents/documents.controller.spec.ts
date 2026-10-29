@@ -54,3 +54,25 @@ describe('DocumentsController original file preview', () => {
     expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
   });
 });
+
+describe('DocumentsController document counts', () => {
+  it('returns status counts in the standard response wrapper', async () => {
+    const counts = { total: 25, indexed: 20, processing: 3, error: 2 };
+    const findCounts = vi.fn().mockResolvedValue(counts);
+    const controller = new DocumentsController(
+      { findCounts } as unknown as DocumentFinderService,
+      {} as DocumentCreatorService,
+      {} as DocumentUpdaterService,
+      {} as DocumentRemoverService,
+      {} as DocumentStorageService,
+    );
+
+    await expect(controller.findCounts({ search: 'manual' })).resolves.toEqual({
+      statusCode: 200,
+      success: true,
+      message: 'Document counts retrieved successfully',
+      data: counts,
+    });
+    expect(findCounts).toHaveBeenCalledWith('manual');
+  });
+});

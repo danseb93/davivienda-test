@@ -4,7 +4,7 @@ import { formatFileSize } from '../utils/documentUtils'
 import { Icon } from './Icon'
 import { SearchResultsPanel } from './SearchResultsPanel'
 import { StatusBadge } from './StatusBadge'
-import type { ApiSearchPage, ApiSearchResult } from '../interfaces/api.interface'
+import type { ApiPagination, ApiSearchPage, ApiSearchResult } from '../interfaces/api.interface'
 
 interface DocumentTableProps {
   documents: DocumentItem[]
@@ -16,12 +16,12 @@ interface DocumentTableProps {
   onFilterChange: (filter: DocumentFilter) => void
   onSearch: () => void
   searchResults: ApiSearchPage | null
-  searchQuery: string
   isSearching: boolean
   searchError: string | null
+  pagination: ApiPagination
+  onPageChange: (page: number) => void
   onSearchResultOpen: (result: ApiSearchResult) => void
   onSearchPageChange: (page: number) => void
-  onSearchClose: () => void
   onOpen: (document: DocumentItem) => void
   onEdit: (document: DocumentItem) => void
   onDelete: (document: DocumentItem) => void
@@ -44,12 +44,12 @@ export function DocumentTable({
   onFilterChange,
   onSearch,
   searchResults,
-  searchQuery,
   isSearching,
   searchError,
+  pagination,
+  onPageChange,
   onSearchResultOpen,
   onSearchPageChange,
-  onSearchClose,
   onOpen,
   onEdit,
   onDelete,
@@ -80,13 +80,11 @@ export function DocumentTable({
         </div>
       </div>
       <SearchResultsPanel
-        query={searchQuery}
         results={searchResults}
         isSearching={isSearching}
         error={searchError}
         onOpen={onSearchResultOpen}
         onPageChange={onSearchPageChange}
-        onClose={onSearchClose}
         embedded
       />
       {documents.length ? (
@@ -95,8 +93,20 @@ export function DocumentTable({
         <EmptyState isLoading={isLoading} />
       ) : null}
       <div className="flex items-center justify-between border-t border-[#eeeeee] px-5 py-3.5 text-xs text-[#858585] sm:px-6">
-        <span>Mostrando {documents.length} de {counts.total} documentos</span>
-        <span className="hidden items-center gap-1 sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Biblioteca conectada</span>
+        <span>
+          {pagination.total === 0
+            ? 'Mostrando 0 documentos'
+            : `Mostrando ${(pagination.page - 1) * pagination.limit + 1}–${(pagination.page - 1) * pagination.limit + documents.length} de ${pagination.total} documentos`}
+        </span>
+        <div className="flex items-center gap-3">
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={pagination.page <= 1 || isLoading} onClick={() => onPageChange(pagination.page - 1)} className="rounded-md border border-[#dedede] px-3 py-1.5 font-semibold text-[#555] disabled:opacity-40">Anterior</button>
+              <span>Página {pagination.page} de {pagination.totalPages}</span>
+              <button type="button" disabled={pagination.page >= pagination.totalPages || isLoading} onClick={() => onPageChange(pagination.page + 1)} className="rounded-md border border-[#dedede] px-3 py-1.5 font-semibold text-[#555] disabled:opacity-40">Siguiente</button>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   )

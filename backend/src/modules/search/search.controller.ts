@@ -19,7 +19,8 @@ export class SearchController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Search completed successfully',
-      data,
+      data: data.items,
+      pagination: data.pagination,
     };
   }
 }

@@ -1,14 +1,24 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  PartialType,
+} from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
-import { ResponseWrapperDto } from '../../../common/dto/response-wrapper.dto.js';
+import { BaseQueryDto } from '../../../common/dto/base-query.dto.js';
+import {
+  ResponseWrapperDto,
+  ResponseWrapperWithPaginationDto,
+} from '../../../common/dto/response-wrapper.dto.js';
+import type { DocumentStatus } from '../domain/document.entity.js';
 
 function transformTags(value: unknown): unknown {
   if (typeof value !== 'string') {
@@ -83,6 +93,24 @@ export class CreateDocumentDto extends BaseDocumentDto {
 // 3. DTO de Actualización (Vuelve opcionales todas las propiedades de creación)
 export class UpdateDocumentDto extends PartialType(CreateDocumentDto) {}
 
+export class DocumentQueryDto extends BaseQueryDto {
+  @ApiPropertyOptional({
+    enum: ['PROCESSING', 'INDEXED', 'ERROR'],
+    description: 'Filter documents by processing status',
+  })
+  @IsOptional()
+  @IsIn(['PROCESSING', 'INDEXED', 'ERROR'])
+  declare readonly status?: DocumentStatus;
+
+  @ApiPropertyOptional({
+    enum: ['createdAt', 'updatedAt', 'title'],
+    default: 'createdAt',
+  })
+  @IsOptional()
+  @IsIn(['createdAt', 'updatedAt', 'title'])
+  declare readonly sort?: 'createdAt' | 'updatedAt' | 'title';
+}
+
 // 4. DTO de Respuesta del Documento (Hereda los metadatos y añade los campos generados por el sistema)
 export class DocumentDto extends BaseDocumentDto {
   @ApiProperty({ format: 'uuid' })
@@ -112,9 +140,39 @@ export class DocumentResponseDto extends ResponseWrapperDto<DocumentDto> {
   declare data: DocumentDto;
 }
 
-export class DocumentsResponseDto extends ResponseWrapperDto<DocumentDto[]> {
+export class DocumentsResponseDto extends ResponseWrapperWithPaginationDto<DocumentDto[]> {
   @ApiProperty({ type: DocumentDto, isArray: true })
   declare data: DocumentDto[];
+}
+
+export class DocumentCountsDto {
+  @ApiProperty({ example: 25 })
+  total!: number;
+
+  @ApiProperty({ example: 20 })
+  indexed!: number;
+
+  @ApiProperty({ example: 3 })
+  processing!: number;
+
+  @ApiProperty({ example: 2 })
+  error!: number;
+}
+
+export class DocumentCountsResponseDto extends ResponseWrapperDto<DocumentCountsDto> {
+  @ApiProperty({ type: DocumentCountsDto })
+  declare data: DocumentCountsDto;
+}
+
+export class DocumentCountQueryDto {
+  @ApiPropertyOptional({
+    description: 'Search term to filter counts by document metadata',
+    maxLength: 50,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  readonly search?: string;
 }
 
 export class DeleteDocumentResponseDto extends ResponseWrapperDto {}

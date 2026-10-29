@@ -59,7 +59,7 @@ export class PrismaSearchRepository implements SearchRepository {
           AND d."searchVector" @@ ${tsQuery}
         ORDER BY "rank" DESC, d."createdAt" DESC
         LIMIT ${query.limit}
-        OFFSET ${query.offset}
+        OFFSET ${(query.page - 1) * query.limit}
       `),
       this.prisma.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT count(*) AS "total"

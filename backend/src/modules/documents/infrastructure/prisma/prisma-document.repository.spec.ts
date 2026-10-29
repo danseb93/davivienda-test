@@ -66,12 +66,96 @@ describe('PrismaDocumentRepository processing queue', () => {
       repository.processNextPending(async () => 'Extracted content'),
     ).resolves.toEqual({
       id: document.id,
+      title: document.title,
       status: 'INDEXED',
       updatedAt,
     });
+
     expect(transaction.document.update).toHaveBeenCalledWith({
       where: { id: document.id },
       data: { content: 'Extracted content', status: 'INDEXED' },
+    });
+  });
+
+  describe('PrismaDocumentRepository findAll', () => {
+    it('applies pagination and returns total counts by status', async () => {
+      const findMany = vi.fn().mockResolvedValue([]);
+      const count = vi.fn().mockResolvedValue(11);
+      const repository = new PrismaDocumentRepository({
+        document: { findMany, count },
+      } as unknown as PrismaService);
+
+      await expect(
+        repository.findAll({
+          page: 2,
+          limit: 10,
+          search: 'manual',
+          sort: 'title',
+          order: 'asc',
+        }),
+      ).resolves.toEqual({
+        items: [],
+        total: 11,
+      });
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { title: { contains: 'manual', mode: 'insensitive' } },
+            { author: { contains: 'manual', mode: 'insensitive' } },
+            { category: { contains: 'manual', mode: 'insensitive' } },
+            { version: { contains: 'manual', mode: 'insensitive' } },
+            { tags: { has: 'manual' } },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          category: true,
+          tags: true,
+          version: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { title: 'asc' },
+        skip: 10,
+        take: 10,
+      });
+    });
+
+    it('counts documents by status independently of paginated results', async () => {
+      const groupBy = vi.fn().mockResolvedValue([
+        { status: 'INDEXED', _count: { _all: 8 } },
+        { status: 'PROCESSING', _count: { _all: 2 } },
+        { status: 'ERROR', _count: { _all: 1 } },
+      ]);
+      const repository = new PrismaDocumentRepository({
+        document: { groupBy },
+      } as unknown as PrismaService);
+
+      await expect(repository.findCounts('manual')).resolves.toEqual({
+        total: 11,
+        indexed: 8,
+        processing: 2,
+        error: 1,
+      });
+      expect(groupBy).toHaveBeenCalledWith({
+        by: ['status'],
+        where: {
+          OR: [
+            { title: { contains: 'manual', mode: 'insensitive' } },
+            { author: { contains: 'manual', mode: 'insensitive' } },
+            { category: { contains: 'manual', mode: 'insensitive' } },
+            { version: { contains: 'manual', mode: 'insensitive' } },
+            { tags: { has: 'manual' } },
+          ],
+        },
+        _count: { _all: true },
+      });
     });
   });
 
@@ -107,6 +191,7 @@ describe('PrismaDocumentRepository processing queue', () => {
       }),
     ).resolves.toEqual({
       id: document.id,
+      title: document.title,
       status: 'ERROR',
       updatedAt,
       error: extractionError,

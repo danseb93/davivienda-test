@@ -7,6 +7,7 @@ describe('RealtimeEventService', () => {
     });
     const event = {
       id: 'ad0d232a-f65b-4aeb-b4a5-1bc188c1d097',
+      title: 'Maintenance guide',
       status: 'INDEXED' as const,
       updatedAt: new Date(),
     };

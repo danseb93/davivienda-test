@@ -74,6 +74,7 @@ export class DocumentIndexingService implements OnModuleInit, OnModuleDestroy {
 
         this.realtimeEvents.publish({
           id: result.id,
+          title: result.title,
           status: result.status,
           updatedAt: result.updatedAt,
         });

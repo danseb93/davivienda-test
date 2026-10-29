@@ -1,17 +1,18 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { OmitType } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsInt,
   IsNotEmpty,
-  IsOptional,
   IsString,
-  Max,
   MaxLength,
-  Min,
 } from 'class-validator';
-import { ResponseWrapperDto } from '../../../common/dto/response-wrapper.dto.js';
+import { BaseQueryDto } from '../../../common/dto/base-query.dto.js';
+import { ResponseWrapperWithPaginationDto } from '../../../common/dto/response-wrapper.dto.js';
 
-export class SearchQueryDto {
+export class SearchQueryDto extends OmitType(BaseQueryDto, [
+  'search',
+  'sort',
+  'order',
+] as const) {
   @ApiProperty({
     description:
       'Keywords or a phrase. Use double quotes to search for an exact phrase.',
@@ -22,20 +23,6 @@ export class SearchQueryDto {
   @MaxLength(200)
   q!: string;
 
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  pageSize?: number;
 }
 
 export class SearchResultDto {
@@ -67,24 +54,9 @@ export class SearchResultDto {
   rank!: number;
 }
 
-export class SearchResultsPageDto {
-  @ApiProperty({ type: [SearchResultDto] })
-  items!: SearchResultDto[];
-
-  @ApiProperty()
-  total!: number;
-
-  @ApiProperty()
-  page!: number;
-
-  @ApiProperty()
-  pageSize!: number;
-
-  @ApiProperty()
-  totalPages!: number;
-}
-
-export class SearchResponseDto extends ResponseWrapperDto<SearchResultsPageDto> {
-  @ApiProperty({ type: SearchResultsPageDto })
-  declare data: SearchResultsPageDto;
+export class SearchResponseDto extends ResponseWrapperWithPaginationDto<
+  SearchResultDto[]
+> {
+  @ApiProperty({ type: SearchResultDto, isArray: true })
+  declare data: SearchResultDto[];
 }

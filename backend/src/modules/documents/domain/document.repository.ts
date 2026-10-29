@@ -1,4 +1,17 @@
 import { Document } from './document.entity.js';
+import type { Pagination } from '../../../common/domain/pagination.entity.js';
+
+export interface DocumentCounts {
+  total: number;
+  indexed: number;
+  processing: number;
+  error: number;
+}
+
+export interface PaginatedDocuments {
+  items: Omit<Document, 'storageName' | 'content'>[];
+  total: number;
+}
 
 export type CreateDocumentData = Pick<
   Document,
@@ -20,13 +33,18 @@ export type UpdateDocumentData = Partial<
 
 export interface DocumentProcessingResult {
   id: string;
+  title: string;
   status: 'INDEXED' | 'ERROR';
   updatedAt: Date;
   error?: unknown;
 }
 
 export interface DocumentRepository {
-  findAll(): Promise<Document[]>;
+  findAll(
+    query: Pagination,
+    status?: Document['status'],
+  ): Promise<PaginatedDocuments>;
+  findCounts(search?: string): Promise<DocumentCounts>;
   findById(id: string): Promise<Document | null>;
   create(data: CreateDocumentData): Promise<Document>;
   update(id: string, data: UpdateDocumentData): Promise<Document>;
