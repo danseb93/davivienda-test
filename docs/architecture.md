@@ -1,157 +1,368 @@
-# Arquitectura del Backend
+# Arquitectura del Sistema
 
 **Proyecto:** Buscador y Visor de Documentos Técnicos
 
-**Alcance:** este documento describe la arquitectura tal como está implementada en el repositorio (módulos NestJS, esquema Prisma/PostgreSQL, migración SQL y `docker-compose.yml`). Cada afirmación se puede verificar en los archivos citados.
+**Alcance:** este documento describe el UI web y el backend tal como están implementados en el repositorio (React/Vite, módulos NestJS, esquema Prisma/PostgreSQL, migraciones SQL y `docker-compose.yml`). Cada afirmación se puede verificar en los archivos citados.
 
 ---
 
 ## 1. Diagramas de arquitectura y flujo
 
-### 1.1 Componentes y dependencias
+### 1.1 Vista general del sistema
 
-El diagrama se lee de izquierda a derecha: cliente, backend, almacenamiento. Todos los módulos acceden a los datos a través de `PrismaService`, y solo `Documents` y el worker tocan el disco.
+Vista de alto nivel del UI web y los servicios que lo respaldan. Los flujos detallados de cada endpoint están separados en las secciones siguientes.
 
 ```mermaid
 flowchart LR
-    FE["Frontend<br/>React 19 + Vite"]
+    UI["UI web<br/>React + Vite"]
 
-    subgraph API["Backend NestJS · puerto 3000"]
-        DOC["Documents"]
-        SRCH["Search"]
-        RT["Realtime<br/>SSE + Subject RxJS"]
-        IDX["Worker de indexación"]
-        OCR["OCRmyPDF + Tesseract"]
-        PRISMA["PrismaService<br/>pool pg"]
+    subgraph API["API y procesamiento"]
+        DOC["Documentos"]
+        SEARCH["Búsqueda"]
+        EVENTS["Eventos SSE"]
+        WORKER["Indexación asíncrona"]
     end
 
-    DISK[("Disco<br/>uploads/documents")]
+    FILES[("Archivos")]
+    OCR["OCR para PDF"]
+    DB[("PostgreSQL<br/>metadatos y texto indexado")]
 
-    subgraph PG["PostgreSQL 16"]
-        TBL[("Tabla Document")]
-        TS[("searchVector<br/>índice GIN")]
-    end
+    UI -->|REST| DOC
+    UI -->|REST| SEARCH
+    EVENTS -->|SSE| UI
 
-    FE -->|POST /documents| DOC
-    FE -->|GET /search| SRCH
-    FE -->|SSE| RT
-
-    DOC --> PRISMA
-    SRCH --> PRISMA
-    RT --> PRISMA
-    IDX --> PRISMA
-    IDX -->|publish| RT
-    IDX --> OCR
-
-    DOC --> DISK
-    IDX --> DISK
-    OCR -->|PDF buscable derivado| DISK
-
-    PRISMA --> TBL
-    TBL -->|trigger| TS
+    DOC --> DB
+    DOC --> FILES
+    WORKER --> DB
+    WORKER --> FILES
+    WORKER --> OCR
+    WORKER -->|publica cambios| EVENTS
+    DB -->|búsqueda full-text| SEARCH
 ```
 
-### 1.2 Carga de un documento
+### 1.2 Documents
 
-La API responde de inmediato con el documento en estado `PROCESSING`. La extracción de texto la hace el worker después (diagrama 1.3).
+Cada endpoint de `Documents` tiene su propio diagrama para mostrar con claridad su flujo.
+
+#### `GET /api/v1/documents`
+
+Lista metadatos con filtros y paginación; la respuesta no incluye `content` ni `storageName`.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant FS as Finder
+   participant RP as Repository
+   participant DB as PostgreSQL
+
+   U->>C: GET /api/v1/documents (filtros, página)
+   C->>FS: findAll(query)
+   FS->>RP: findAll(pagination, status)
+   par Página
+       RP->>DB: Consulta metadatos paginados
+   and Total
+       RP->>DB: Cuenta documentos filtrados
+   end
+   DB-->>RP: Filas y total
+   RP-->>FS: Documentos y total
+   FS-->>C: Documentos y paginación
+   C-->>U: 200 (data, pagination)
+```
+
+#### `GET /api/v1/documents/count`
+
+Devuelve los conteos de documentos por estado, opcionalmente filtrados por búsqueda.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as Frontend
-    participant C as Controller
-    participant CS as Creator
-    participant ST as Storage
-    participant DB as PostgreSQL
-    participant SS as SSE
+   participant U as Frontend
+   participant C as Controller
+   participant FS as Finder
+   participant RP as Repository
+   participant DB as PostgreSQL
 
-    U->>C: POST /documents (archivo + metadatos)
-    C->>CS: create(dto, file)
-    CS->>ST: store(file)
-    Note over ST: Valida extensión, MIME,<br/>magic bytes y tamaño
-    ST->>ST: Escribe {uuid}.ext (flag wx)
-    CS->>DB: INSERT con status PROCESSING
-    Note over DB: El trigger calcula<br/>searchVector
-    CS-->>U: 201 Created (id, PROCESSING)
-    U->>SS: GET /realtime/documents/:id
-    SS->>DB: Lee el estado actual
-    SS-->>U: Evento PROCESSING
+   U->>C: GET /api/v1/documents/count?search=...
+   C->>FS: findCounts(search)
+   FS->>RP: findCounts(search normalizado)
+   RP->>DB: Cuenta por estado
+   DB-->>RP: Conteos
+   RP-->>FS: Conteos
+   FS-->>C: Conteos
+   C-->>U: 200 (data)
 ```
 
-### 1.3 Indexación asíncrona y notificación
+#### `GET /api/v1/documents/:id`
 
-El worker consulta la cola cada segundo mientras haya documentos pendientes. El cliente cierra el `EventSource` al recibir un estado terminal.
+Busca un documento por UUID y excluye el contenido y el nombre interno del archivo de la respuesta.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant FS as Finder
+   participant RP as Repository
+   participant DB as PostgreSQL
+
+   U->>C: GET /api/v1/documents/:id
+   C->>FS: findById(id)
+   FS->>RP: findById(id)
+   RP->>DB: SELECT por UUID
+   DB-->>RP: Documento o no encontrado
+   RP-->>FS: Documento
+   FS-->>C: Documento
+   C-->>U: 200 (metadatos)
+```
+
+#### `GET /api/v1/documents/:id/file`
+
+Transmite siempre el archivo original. El UI lo usa para el botón **Descargar original** y para leer TXT/Markdown; en PDF también solicita `/preview` para mostrar el derivado OCR cuando está disponible. Aunque `/preview` sirve el original como alternativa, no reemplaza esta ruta cuando se requiere descargar el original después de completar OCR.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant FS as Finder
+   participant ST as Storage
+   participant DB as PostgreSQL
+
+   U->>C: GET /api/v1/documents/:id/file
+   C->>FS: findById(id)
+   FS->>DB: Busca storageName y metadatos
+   DB-->>FS: Documento
+   FS-->>C: Documento
+   C->>ST: read(storageName)
+   ST-->>C: Archivo original
+   C-->>U: Stream (Content-Type original)
+```
+
+#### `GET /api/v1/documents/:id/preview`
+
+Transmite el PDF con capa OCR si está disponible; si aún no existe o el documento no es PDF, transmite el original. Esta ruta es para la vista previa, no para descargar el archivo fuente.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant FS as Finder
+   participant ST as Storage
+   participant DB as PostgreSQL
+
+   U->>C: GET /api/v1/documents/:id/preview
+   C->>FS: findById(id)
+   FS->>DB: Busca storageName y metadatos
+   DB-->>FS: Documento
+   FS-->>C: Documento
+   C->>ST: readPreview(storageName)
+   alt Existe PDF buscable
+       ST-->>C: PDF con capa OCR
+   else No existe PDF buscable
+       ST-->>C: Archivo original
+   end
+   C-->>U: Stream de previsualización
+```
+
+#### `POST /api/v1/documents`
+
+Guarda el original y responde `201` en estado `PROCESSING`. Después, el worker aplica OCR a los PDF que lo requieren, extrae el texto y lo indexa; el UI recibe el cambio por la conexión SSE compartida (§1.5).
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant W as Worker
-    participant ST as Storage
+    participant UI as Frontend
+    participant API as Documents API
+    participant Storage
     participant DB as PostgreSQL
-    participant RS as Realtime
-    participant U as Frontend
+    participant Worker as Worker de indexación
+    participant OCR as OCRmyPDF y Tesseract
+    participant SSE as Realtime SSE
 
-    loop Cada 1 s mientras haya pendientes
-        W->>DB: Toma un PROCESSING (FOR UPDATE SKIP LOCKED)
-        W->>ST: read(storageName)
-        alt PDF
-            W->>W: OCRmyPDF --skip-text + Tesseract
-            Note over W: Conserva páginas originales;<br/>añade texto OCR invisible
-            W->>ST: Guarda copia .searchable.pdf
-            W->>W: Extrae texto de la copia con pdf-parse
-        else TXT o Markdown
-            W->>W: Decodifica UTF-8
-        end
-        alt Éxito
-            W->>DB: UPDATE content + status INDEXED
-            Note over DB: Misma transacción,<br/>el trigger refresca el vector
-            W->>RS: publish(INDEXED)
-            RS-->>U: document.status INDEXED
-        else Fallo
-            W->>DB: UPDATE status ERROR
-            W->>RS: publish(ERROR)
-            RS-->>U: document.status ERROR
-        end
+    UI->>API: POST /api/v1/documents (archivo y metadatos)
+    Note over UI,SSE: El UI ya mantiene abierta la conexión SSE global
+    API->>Storage: Valida y guarda el original
+    Storage-->>API: storageName
+    API->>DB: INSERT con status PROCESSING
+    DB-->>API: Documento creado
+    API-->>UI: 201 (metadatos, PROCESSING)
+    Note over Worker,DB: El procesamiento ocurre en segundo plano
+    Worker->>DB: Reclama documento PROCESSING
+    Worker->>Storage: Lee el archivo original
+    alt PDF
+        Worker->>OCR: Crea PDF buscable con OCR
+        OCR-->>Worker: PDF con capa de texto
+        Worker->>Storage: Guarda el PDF buscable
+    else TXT o Markdown
+        Worker->>Worker: Decodifica UTF-8
     end
-    U->>U: Cierra el EventSource
+    Worker->>Worker: Extrae el texto para búsqueda
+    Worker->>DB: Guarda content y actualiza status
+    Note over DB: Trigger refresca searchVector
+    Worker->>SSE: Publica INDEXED o ERROR
+    SSE-->>UI: Evento document.status
 ```
 
-### 1.4 Búsqueda
+#### `PATCH /api/v1/documents/:id`
+
+Verifica que el documento exista y que haya al menos un campo para actualizar; PostgreSQL refresca `searchVector` mediante el trigger.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant US as Updater
+   participant RP as Repository
+   participant DB as PostgreSQL
+
+   U->>C: PATCH /api/v1/documents/:id (metadatos)
+   C->>US: update(id, dto)
+   US->>RP: findById(id)
+   RP->>DB: Busca documento
+   DB-->>RP: Documento existente
+   RP-->>US: Documento
+   US->>US: Valida campos por actualizar
+   US->>RP: update(id, campos)
+   RP->>DB: UPDATE metadatos
+   Note over DB: El trigger refresca<br/>searchVector
+   DB-->>RP: Documento actualizado
+   RP-->>US: Documento
+   US-->>C: Documento
+   C-->>U: 200 (metadatos)
+```
+
+#### `DELETE /api/v1/documents/:id`
+
+Elimina primero el registro y luego el archivo original y su derivado de búsqueda.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant DS as Remover
+   participant RP as Repository
+   participant DB as PostgreSQL
+   participant ST as Storage
+
+   U->>C: DELETE /api/v1/documents/:id
+   C->>DS: remove(id)
+   DS->>RP: findById(id)
+   RP->>DB: Busca documento
+   DB-->>RP: Documento y storageName
+   RP-->>DS: Documento
+   DS->>RP: delete(id)
+   RP->>DB: DELETE documento
+   DS->>ST: remove(storageName)
+   ST-->>DS: Archivo y derivado eliminados
+   DS-->>C: Eliminación completada
+   C-->>U: 200 (success)
+```
+
+### 1.3 Search
+
+#### `GET /api/v1/search`
 
 La página de resultados y el total se calculan en paralelo contra el mismo índice GIN.
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant U as Frontend
-    participant SC as Controller
-    participant DS as Service
-    participant RP as Repository
-    participant DB as PostgreSQL
+   autonumber
+   participant U as Frontend
+   participant SC as Controller
+   participant DS as Service
+   participant RP as Repository
+   participant DB as PostgreSQL
 
-    U->>SC: GET /search?q=...&page=1&pageSize=20
-    SC->>DS: search(query)
-    Note over SC: El DTO valida q (máx. 200),<br/>page ≥ 1, pageSize 1..100
-    DS->>DS: Rechaza q vacío (400)
-    DS->>RP: search(term, limit, offset)
-    par Página de resultados
-        RP->>DB: Consulta con ranking y ts_headline
-    and Total
-        RP->>DB: count(*) de documentos INDEXED
-    end
-    DB-->>RP: Filas y total
-    RP-->>DS: items y total
-    DS->>DS: Escapa HTML y convierte marcadores en mark
-    DS-->>U: 200 (items, total, page, pageSize, totalPages)
+   U->>SC: GET /api/v1/search?q=...&page=1&limit=20
+   SC->>DS: search(query)
+   Note over SC: El DTO valida q (máx. 200),<br/>page ≥ 1 y límites
+   DS->>DS: Rechaza q vacío (400)
+   DS->>RP: search(term, limit, offset)
+   par Página de resultados
+       RP->>DB: Consulta con ranking y ts_headline
+   and Total
+       RP->>DB: count(*) de documentos INDEXED
+   end
+   DB-->>RP: Filas y total
+   RP-->>DS: items y total
+   DS->>DS: Escapa HTML y convierte marcadores en mark
+   DS-->>SC: items y paginación
+   SC-->>U: 200 (data, pagination)
 ```
 
 Detalle de la consulta de la página: los términos normales se convierten en lexemas prefijo con `to_tsquery('simple', ...)` (por ejemplo, `prue:*` encuentra `prueba`); varios términos se combinan con AND. Las consultas entre comillas y operadores mantienen `websearch_to_tsquery('simple', q)`. Ambas consultan `searchVector` y ordenan por `ts_rank_cd DESC` y luego `createdAt DESC`. Para no ejecutar `ts_headline` sobre contenidos OCR de varios millones de caracteres, el fragmento se limita a 3.000 caracteres alrededor de la primera aparición del término de búsqueda; los metadatos completos también se incluyen.
 
 > Solo se devuelven documentos con `status = 'INDEXED'`. Uno en `PROCESSING` o `ERROR` nunca aparece en los resultados aunque su fila exista (`prisma-search.repository.ts`).
 
-### 1.5 Vista y resaltado de PDFs
+### 1.4 Realtime
 
-El frontend pide `GET /documents/:id/preview`: el backend sirve la copia `.searchable.pdf` si ya existe y, mientras se procesa o si el archivo no es PDF, sirve el original. PDF.js renderiza esa capa OCR invisible sobre las imágenes originales y coloca resaltados en las coordenadas del texto reconocido. `GET /documents/:id/file` continúa entregando el original para descarga. El PDF derivado se guarda junto al original y se elimina al borrar el documento.
+#### `GET /api/v1/realtime/documents`
+
+Abre un stream SSE global con cambios de estado de todos los documentos y un heartbeat cada 15 segundos.
+
+```mermaid
+sequenceDiagram
+   autonumber
+   participant U as Frontend
+   participant C as Controller
+   participant ES as RealtimeEventService
+   participant W as Worker
+
+   U->>C: GET /api/v1/realtime/documents
+   C->>ES: streamDocuments()
+   ES-->>U: Abre stream text/event-stream
+   loop Mientras la conexión siga abierta
+       W->>ES: publish(document.status)
+       ES-->>U: Evento document.status
+       ES-->>U: Evento heartbeat (cada 15 s)
+   end
+```
+
+### 1.5 Indexación asíncrona
+
+El worker se activa al iniciar el módulo y procesa los documentos pendientes hasta vaciar la cola; luego vuelve a comprobarla un segundo después. El UI mantiene abierto el `EventSource` compartido y actualiza los documentos cuando recibe su estado terminal.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Worker
+    participant Storage
+    participant DB as PostgreSQL
+    participant Realtime
+    participant UI as Frontend
+
+    loop Mientras haya documentos pendientes
+        Worker->>DB: Reclama un PROCESSING con SKIP LOCKED
+        Worker->>Storage: Lee el archivo original
+        alt El archivo es PDF
+            Worker->>Worker: Ejecuta OCRmyPDF con --skip-text
+            Note over Worker: Conserva páginas y agrega texto OCR invisible
+            Worker->>Storage: Guarda la copia .searchable.pdf
+            Worker->>Worker: Extrae texto de la copia con pdf-parse
+        else El archivo es TXT o Markdown
+            Worker->>Worker: Decodifica el archivo como UTF-8
+        end
+        alt Extracción exitosa
+            Worker->>DB: Guarda content y status INDEXED
+            Note over DB: La transacción activa el trigger de searchVector
+            Worker->>Realtime: Publica el evento INDEXED
+            Realtime-->>UI: Evento document.status
+        else La extracción falla
+            Worker->>DB: Actualiza status ERROR
+            Worker->>Realtime: Publica el evento ERROR
+            Realtime-->>UI: Evento document.status
+        end
+    end
+```
+
+### 1.6 Vista y resaltado de PDFs
+
+Para PDF, el UI pide `GET /api/v1/documents/:id/preview` para mostrar la copia `.searchable.pdf` si ya existe; mientras se procesa sirve el original. PDF.js renderiza la capa OCR invisible sobre las imágenes originales y coloca resaltados en las coordenadas del texto reconocido. `GET /api/v1/documents/:id/file` se mantiene separado para entregar el original al botón de descarga y para leer TXT/Markdown. El PDF derivado se guarda junto al original y se elimina al borrar el documento.
 
 ---
 
@@ -159,12 +370,13 @@ El frontend pide `GET /documents/:id/preview`: el backend sirve la copia `.searc
 
 ### 2.1 Rendimiento (400 ms a 1 s)
 
-El enunciado exige que toda búsqueda responda entre 400 ms y 1 s, y prohíbe `LIKE` y equivalentes sin índice. Cada decisión ataca una causa concreta de latencia, eligiendo siempre la opción más simple que cumple el rango sin añadir infraestructura.
+Toda búsqueda debe responder entre 400 ms y 1 s, prohíbe `LIKE` y equivalentes sin índice. Cada decisión ataca una causa concreta de latencia, eligiendo siempre la opción más simple que cumple el rango sin añadir infraestructura.
 
-- **Índice invertido en lugar de barrido de filas.** `LIKE '%t%'` recorre toda la tabla y no sirve con un `content TEXT` grande. Entre las opciones con índice (Elasticsearch/OpenSearch, Meilisearch/Typesense, RedisSearch, Mongo Text Index y PostgreSQL FTS con `tsvector` + GIN) se eligió la última (ver §2.3). La consulta se resuelve en el mismo motor que guarda los datos, sin salto de red ni serialización adicional. Además, el ranking (`ts_rank_cd`) y el resaltado (`ts_headline`) salen en la misma sentencia.
-- **Trabajo pesado fuera de la petición.** Un `POST` síncrono que extrajera y tokenizara el texto heredaría el peor caso de un PDF grande. Por eso se responde `201` con `PROCESSING` y el worker hace la extracción (§1.3). La escritura se reduce a validar el archivo y hacer un `INSERT`, y el aviso de término llega por SSE (HU-04). Se descartó el polling porque multiplica las peticiones sin ser más inmediato.
-- **Límites duros en el DTO.** Sin tope, un `pageSize` arbitrario obligaría a ordenar y materializar miles de filas con su snippet. Se fija `pageSize` en [1, 100], `q` en 200 caracteres como máximo y fragmentos acotados (`MaxFragments=2`, `MinWords=8`, `MaxWords=24`). Así el coste de cada consulta tiene techo, sin importar lo que pida el cliente.
+- **Índice invertido.** Se eligio PostgreSQL FTS con `tsvector` + GIN porque la consulta se resuelve en el mismo motor que guarda los datos, sin salto de red ni serialización adicional. Además, el ranking (`ts_rank_cd`) y el resaltado (`ts_headline`) salen en la misma sentencia.
+- **Trabajo pesado fuera de la petición.** Un `POST` síncrono que extrajera y tokenizara el texto heredaría el peor caso de un PDF grande. Por eso se responde `201` con `PROCESSING` y el worker hace la extracción (§1.5). La escritura se reduce a validar el archivo y hacer un `INSERT`, y el aviso de término llega por SSE. Se descartó el polling porque multiplica las peticiones sin ser más inmediato.
+- **Límites duros en el DTO.** Sin tope, un `limit` arbitrario obligaría a ordenar y materializar miles de filas con su snippet. Se fija `limit` en [1, 100], `q` en 200 caracteres como máximo y fragmentos acotados (`MaxFragments=2`, `MinWords=8`, `MaxWords=24`). Así el coste de cada consulta tiene techo, sin importar lo que pida el cliente.
 - **Página y total en paralelo.** Calcular `count(*)` después de la página aumenta la latencia percibida aproximadamente al doble. Con `Promise.all` el tiempo total es el de la consulta más lenta. Se prefirió el conteo exacto a las estimaciones de catálogo porque el conjunto filtrado ya usa el mismo índice GIN.
+- **Optimización medida del resaltado.** Se analizó la consulta con `EXPLAIN (ANALYZE, BUFFERS)` y mediciones directas de la API. Se encontró que `ts_headline` procesaba documentos OCR de alrededor de cuatro millones de caracteres. Limitar su entrada a una ventana contextual de 3.000 caracteres alrededor de la coincidencia mantuvo el ranking, el conteo y el resaltado, y redujo la latencia observada para la consulta de ejemplo de aproximadamente 3,2 s a 0,42–0,46 s.
 - **Pool de conexiones reutilizado.** Abrir una conexión por petición sumaría decenas o cientos de milisegundos de handshake a cada búsqueda. `@prisma/adapter-pg` mantiene un pool (`DATABASE_MAX_POOL_SIZE=10`) con timeouts de conexión e inactividad, de modo que el coste de conectar se amortiza y el agotamiento se detecta rápido en lugar de dejar la petición colgada.
 - **Fragmento de búsqueda acotado.** `ts_headline` opera sobre los metadatos y una ventana de 3.000 caracteres alrededor del primer término encontrado en el contenido, no sobre el documento OCR completo. Esto mantiene contexto relevante y evita que documentos largos dominen la latencia.
 - **No transferir contenido innecesario.** Incluir `content` completo en `/documents` dominaría el tamaño de la respuesta y el tiempo de serialización. Los listados y detalles excluyen `content` y `storageName`, y el buscador devuelve solo el snippet de `ts_headline`.
@@ -208,9 +420,8 @@ El enunciado exige que toda búsqueda responda entre 400 ms y 1 s, y prohíbe `L
 | --- | --- | --- | --- |
 | documents | `domain/document.repository.ts` | `infrastructure/prisma/prisma-document.repository.ts` | `DocumentRepository` |
 | search | `domain/search.repository.ts` | `infrastructure/prisma/prisma-search.repository.ts` | `SearchRepository` |
-| realtime | `domain/realtime.repository.ts` | `infrastructure/prisma/prisma-realtime.repository.ts` | `RealtimeRepository` |
 
-En la práctica, los `.spec.ts` sustituyen los adaptadores por dobles, y cambiar el motor de búsqueda o el canal de eventos es un cambio de proveedor, no de lógica de negocio.
+En la práctica, los `.spec.ts` sustituyen los adaptadores de persistencia por dobles. El canal SSE es un bus en memoria dentro del proceso, no un adaptador de persistencia.
 
 ### 2.6 Validación y seguridad implementadas
 
@@ -238,36 +449,34 @@ El backend habilita CORS con los orígenes configurados en `CORS_ORIGIN` (lista 
 | Infraestructura | Petición HTTP normal, sin `Upgrade` | Requiere upgrade de protocolo | Requiere desplegar Redis |
 | Complejidad de estado | Ninguna (canal informativo) | Manejo de salas y desconexiones | Suscripciones y acks |
 
-El requisito de no usar polling se cumple. El frontend abre un `EventSource` con el `id` que devuelve la carga y lo cierra al recibir `INDEXED` o `ERROR`.
+El requisito de no usar polling se cumple. El UI mantiene una sola conexión `EventSource` global en `/api/v1/realtime/documents` y la usa para los estados de todos los documentos; no abre una conexión por archivo ni la cierra al recibir `INDEXED` o `ERROR`.
 
 ### 3.2 Implementación
 
 **Endpoint** (`modules/realtime/realtime.controller.ts`):
 
 ```
-GET /api/v1/realtime/documents/:id  →  text/event-stream
+GET /api/v1/realtime/documents  →  text/event-stream
 ```
 
 **Servicio** (`RealtimeEventService`):
 
 - Un único `Subject<DocumentStatusEvent>` en memoria actúa como bus de eventos del proceso.
 - El worker invoca `publish(event)` después de confirmar el cambio de estado en la base de datos (`document-indexing.service.ts`).
-- `streamDocument(id)` combina tres fuentes con `merge()`:
-  1. `currentStatus` (`defer(...)`): lee el estado actual y lo emite de inmediato. Si el documento no existe lanza `NotFoundException` (404) y no se abre la suscripción. Esto cierra la carrera entre el `POST /documents` y la apertura del `EventSource`.
-  2. `updates`: `events.pipe(filter(e => e.id === id))`, que filtra por documento dentro del stream compartido.
-  3. `heartbeat`: `interval(15_000)` con `type: 'heartbeat'`, para que proxies y balanceadores no cierren conexiones ociosas.
+- `streamDocuments()` combina con `merge()` los eventos `document.status` y un `heartbeat` cada 15 segundos para que proxies y balanceadores no cierren conexiones ociosas.
+- El UI carga el estado actual por REST; el canal SSE se limita a notificar los cambios posteriores a la conexión.
 
 **Formato del evento** (`event:` es `document.status`):
 
 ```
 event: document.status
-data: {"id":"3f6c2a1e-...","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.000Z"}
+data: {"id":"3f6c2a1e-...","title":"Manual técnico","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.000Z"}
 ```
 
 **Garantías y límites asumidos:**
 
-- **Fuente de verdad:** la columna `status`. El stream arranca con el estado actual y luego entrega los cambios.
-- **Eventos no persistidos:** si nadie está suscrito durante la transición, el evento no se vuelve a emitir. El cliente recupera el estado final con `GET /api/v1/documents/:id` o abriendo el stream.
+- **Fuente de verdad:** la columna `status`, consultada por el UI a través de los endpoints REST de listado y detalle.
+- **Eventos no persistidos:** si nadie está suscrito durante la transición, el evento no se vuelve a emitir ni se reproduce al reconectar. El UI vuelve a consultar listado y conteos al recibir una notificación; las actualizaciones perdidas durante una desconexión requieren una nueva consulta REST.
 - **Sin ack ni replay:** el canal es solo informativo.
 - **Alcance limitado al proceso:** el `Subject` es local a cada instancia (ver §4.3).
 - **El worker no depende del cliente:** procesa aunque el navegador se cierre y retoma los pendientes tras un reinicio (`onModuleInit` llama a `schedule(0)`).
@@ -288,7 +497,7 @@ data: {"id":"3f6c2a1e-...","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.0
 | Escrituras sin degradar las lecturas | La carga cuesta O(tamaño del archivo) en disco más un `INSERT`. La extracción y el análisis quedan fuera de la petición |
 | Concurrencia del worker | `FOR UPDATE SKIP LOCKED`: dos procesos de indexación nunca toman el mismo pendiente y los lectores no esperan locks |
 | Backpressure natural | Cola persistente en `Document`, filtrada por `status='PROCESSING' ORDER BY createdAt ASC` (FIFO) |
-| Paginación acotada | `pageSize ≤ 100` y `MaxFragments=2` |
+| Paginación acotada | `limit ≤ 100` y `MaxFragments=2` |
 | Consumo de conexiones | Pool `pg` con `max`, `connectionTimeoutMillis` e `idleTimeoutMillis` configurables por variable de entorno |
 | Recuperación ante fallos | Los estados son persistentes: las filas huérfanas en `PROCESSING` se retoman al arrancar el servicio |
 
@@ -317,7 +526,7 @@ La capa HTTP es **stateless**. Varias réplicas detrás de un balanceador funcio
 ### 4.4 Observabilidad y pruebas
 
 - `Logger` en el worker y en el creador, con el stack del fallo de indexación, para auditar por qué un documento quedó en `ERROR`.
-- Pruebas que fijan el comportamiento crítico: `document-indexing.service.spec.ts`, `prisma-document.repository.spec.ts` (transacción y `SKIP LOCKED`), `realtime-event.service.spec.ts` y `realtime.controller.spec.ts` (evento inicial y `document.status`), además de `test/app.e2e-spec.ts` sobre `docs_db_test`.
+- Pruebas que fijan el comportamiento crítico: `document-indexing.service.spec.ts`, `prisma-document.repository.spec.ts` (transacción y `SKIP LOCKED`), `realtime-event.service.spec.ts` y `realtime.controller.spec.ts` (evento `document.status` en el stream global), además de `test/app.e2e-spec.ts` sobre `docs_db_test`.
 - Métricas recomendadas para operar el SLA de 400 ms a 1 s: p95 de `/search`, edad de la cola (`now() - min(createdAt) WHERE status='PROCESSING'`), tasa de `ERROR` y conexiones SSE activas.
 
 ---
@@ -327,13 +536,15 @@ La capa HTTP es **stateless**. Varias réplicas detrás de un balanceador funcio
 | Método y ruta | Controlador | Servicio | Descripción |
 | --- | --- | --- | --- |
 | `POST /api/v1/documents` | `DocumentsController.create` | `DocumentCreatorService` + `DocumentStorageService` | Multipart TXT/PDF/MD con metadatos. Responde `201` en `PROCESSING` |
-| `GET /api/v1/documents` | `findAll` | `DocumentFinderService` | Listado de metadatos (sin `content` ni `storageName`) |
-| `GET /api/v1/documents/:id` | `findById` | `DocumentFinderService` | Detalle de un documento |
-| `GET /api/v1/documents/:id/file` | `getOriginalFile` | `DocumentFinderService` + `DocumentStorageService` | Transmite el archivo original para previsualizar |
-| `PATCH /api/v1/documents/:id` | `update` | `DocumentUpdaterService` | Actualiza metadatos. El trigger refresca `searchVector` |
-| `DELETE /api/v1/documents/:id` | `remove` | `DocumentRemoverService` | Elimina la fila y el archivo almacenado |
+| `GET /api/v1/documents` | `DocumentsController.findAll` | `DocumentFinderService` | Listado paginado de metadatos (sin `content` ni `storageName`) |
+| `GET /api/v1/documents/count` | `DocumentsController.findCounts` | `DocumentFinderService` | Conteos por estado, con búsqueda opcional |
+| `GET /api/v1/documents/:id` | `DocumentsController.findById` | `DocumentFinderService` | Detalle de un documento (sin `content` ni `storageName`) |
+| `GET /api/v1/documents/:id/file` | `DocumentsController.getOriginalFile` | `DocumentFinderService` + `DocumentStorageService` | Transmite siempre el original para descarga y lectura de texto |
+| `GET /api/v1/documents/:id/preview` | `DocumentsController.getPreviewFile` | `DocumentFinderService` + `DocumentStorageService` | Previsualización: PDF OCR si existe; en otro caso, el original |
+| `PATCH /api/v1/documents/:id` | `DocumentsController.update` | `DocumentUpdaterService` | Actualiza metadatos. El trigger refresca `searchVector` |
+| `DELETE /api/v1/documents/:id` | `DocumentsController.remove` | `DocumentRemoverService` | Elimina la fila y el archivo almacenado |
 | `GET /api/v1/search` | `SearchController.search` | `DocumentSearchService` + `PrismaSearchRepository` | Full-text con ranking, paginación y `<mark>` |
-| `GET /api/v1/realtime/documents/:id` | `RealtimeController.streamDocument` | `RealtimeEventService` | SSE: estado inicial, `document.status` y heartbeat cada 15 s |
+| `GET /api/v1/realtime/documents` | `RealtimeController.streamDocuments` | `RealtimeEventService` | SSE global: eventos `document.status` y heartbeat cada 15 s |
 | `/docs` y `/docs-json` | `config/swagger.config.ts` | — | OpenAPI con Basic Auth |
 
 **Estados:**
@@ -350,10 +561,45 @@ La capa HTTP es **stateless**. Varias réplicas detrás de un balanceador funcio
 | --- | --- |
 | `PORT` | Puerto HTTP de la API (3000) |
 | `NODE_ENV` | Entorno (`development`, `test` o `production`) |
-| `MAX_FILE_SIZE_MB` | Límite de Multer por archivo (25 por defecto) |
+| `MAX_FILE_SIZE_MB` | Límite de Multer por archivo, en MB (25 por defecto) |
+| `CORS_ORIGIN` | Orígenes permitidos, separados por comas (`http://localhost:5173,http://127.0.0.1:5173` por defecto) |
 | `DATABASE_URL` | Cadena de conexión de Prisma |
 | `DATABASE_MAX_POOL_SIZE` | Conexiones máximas del pool `pg` (10 por defecto) |
 | `DATABASE_CONNECTION_TIMEOUT_MS` | Timeout de establecimiento de conexión (5000 por defecto) |
 | `DATABASE_IDLE_TIMEOUT_MS` | Cierre de conexiones ociosas (30000 por defecto) |
+| `OCR_LANGUAGES` | Idiomas para OCR de PDF (`spa+eng` por defecto) |
+| `OCR_TIMEOUT_SECONDS` | Timeout de OCR por PDF en segundos (600 por defecto) |
 | `SWAGGER_USER` / `SWAGGER_PASSWORD` | Basic Auth de `/docs` |
-| `VITE_API_URL` (frontend) | Origen de la API para REST y `EventSource` |
+| `VITE_API_URL` (frontend) | Origen de la API para REST y SSE (`http://localhost:3000` por defecto) |
+| `VITE_MAX_DOCUMENTS_PER_BATCH` (frontend) | Máximo de archivos por lote (20 por defecto) |
+| `VITE_UPLOAD_CONCURRENCY` (frontend) | Cargas enviadas en paralelo (5 por defecto) |
+
+---
+
+## 7. Arquitectura de la UI
+
+El frontend es una SPA de React 19, TypeScript y Vite. La pantalla principal (`DocumentsScreen`) compone la biblioteca, el resumen por estados, la carga por lotes, la búsqueda y el visor. La lógica de datos vive en hooks de la feature `documents`; `documentApi` concentra las llamadas REST y la suscripción SSE.
+
+```mermaid
+flowchart LR
+    SCREEN["DocumentsScreen"]
+    HOOKS["Hooks de documentos<br/>listado, carga, búsqueda y visor"]
+    API_CLIENT["documentApi<br/>REST + EventSource"]
+    API["Backend API"]
+    VIEWER["PDF.js<br/>preview y resaltado"]
+
+    SCREEN --> HOOKS
+    HOOKS --> API_CLIENT
+    API_CLIENT -->|REST: documentos, búsqueda y archivos| API
+    API -->|SSE global: estado de indexación| API_CLIENT
+    HOOKS --> VIEWER
+```
+
+- **Biblioteca y estados:** consulta `GET /api/v1/documents` con filtros y paginación, y `GET /api/v1/documents/count` para los conteos.
+- **Carga:** valida PDF/TXT/Markdown en la interfaz y envía un `POST /api/v1/documents` por archivo. El tamaño máximo del lote y la concurrencia se configuran con `VITE_MAX_DOCUMENTS_PER_BATCH` y `VITE_UPLOAD_CONCURRENCY`.
+- **Tiempo real:** mantiene una sola conexión a `GET /api/v1/realtime/documents`. Los eventos incluyen el ID y el estado; el UI actualiza la cola, la biblioteca y los conteos.
+- **Búsqueda:** usa `GET /api/v1/search` para los resultados full-text, con paginación y fragmentos resaltados. También inicia una búsqueda de contenido cuando el término no coincide con los documentos ya cargados localmente.
+- **Visor:** obtiene metadatos y el original con `GET /api/v1/documents/:id` y `GET /api/v1/documents/:id/file`. El original se conserva para el enlace **Descargar original** y para mostrar TXT/Markdown. Para PDF solicita además `/preview`, que puede devolver la copia OCR para renderizar y resaltar; antes de que exista esa copia, devuelve el original. Las rutas tienen propósitos distintos y el UI consume ambas.
+- **Edición y eliminación:** actualiza metadatos con `PATCH /api/v1/documents/:id` y elimina documentos con `DELETE /api/v1/documents/:id`.
+
+El frontend se configura con `frontend/.env.example`; las variables del backend están en `backend/.env.example`.

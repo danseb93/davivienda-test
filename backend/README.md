@@ -13,7 +13,7 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 - **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
 - **Búsqueda full-text:** PostgreSQL `tsvector`/GIN sobre títulos, metadatos y contenido indexado; no utiliza `LIKE`.
 - **Indexación en segundo plano:** el backend procesa cargas pendientes aunque el cliente se desconecte y recupera las pendientes al reiniciar.
-- **Eventos SSE:** una única conexión a `GET /api/v1/realtime/documents` recibe los cambios de estado de todos los documentos; también se conserva el endpoint individual `GET /api/v1/realtime/documents/:id`.
+- **Eventos SSE:** una única conexión a `GET /api/v1/realtime/documents` recibe los cambios de estado de todos los documentos.
 - **API documentada con Swagger:** referencia interactiva de todos los endpoints.
 - **Manejo estructurado de errores:** validación de datos y filtros de excepciones.
 
@@ -40,7 +40,7 @@ La carga persiste el archivo original y sus metadatos con estado `PROCESSING` y 
 
 ## 🔎 Búsqueda Full-Text
 
-La ruta `GET /api/v1/search` acepta `q`, `page` y `pageSize` (máximo 100). Las búsquedas normales usan prefijos de lexema (`prue` encuentra `prueba`; varios términos se combinan con AND). Las frases entre comillas dobles mantienen la búsqueda exacta con la sintaxis de PostgreSQL websearch. La respuesta incluye relevancia, paginación y fragmentos con coincidencias dentro de `<mark>`.
+La ruta `GET /api/v1/search` acepta `q`, `page` y `limit` (máximo 100). Las búsquedas normales usan prefijos de lexema (`prue` encuentra `prueba`; varios términos se combinan con AND). Las frases entre comillas dobles mantienen la búsqueda exacta con la sintaxis de PostgreSQL websearch. La respuesta incluye relevancia, paginación y fragmentos con coincidencias dentro de `<mark>`.
 
 - Un trigger mantiene `searchVector` con título, metadatos, etiquetas y contenido; un índice **GIN** acelera las consultas.
 - Las consultas parametrizadas usan `prisma.$queryRaw`, `websearch_to_tsquery`, `ts_rank_cd` y `ts_headline`; no utilizan `LIKE`.
@@ -58,16 +58,15 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | `GET` | `/api/v1/documents` | Lista todos los documentos y sus metadatos |
 | `GET` | `/api/v1/documents/count` | Devuelve los conteos de documentos por estado |
 | `GET` | `/api/v1/documents/:id` | Consulta los metadatos y el estado de un documento |
-| `GET` | `/api/v1/documents/:id/file` | Sirve el archivo original para previsualización inline |
+| `GET` | `/api/v1/documents/:id/file` | Sirve siempre el original para descargarlo |
 | `GET` | `/api/v1/documents/:id/preview` | Sirve la copia OCR buscable del PDF o el original si aún no existe |
-| `GET` | `/api/v1/search?q=motor&page=1&pageSize=20` | Busca documentos por términos o frases con paginación y resaltado |
+| `GET` | `/api/v1/search?q=motor&page=1&limit=20` | Busca documentos por términos o frases con paginación y resaltado |
 | `GET` | `/api/v1/realtime/documents` | SSE compartido con cambios `document.status` de todos los documentos |
-| `GET` | `/api/v1/realtime/documents/:id` | SSE con estado actual y cambios `document.status` del documento |
 | `POST` | `/api/v1/documents` | Sube un archivo TXT, PDF o Markdown con metadatos vía multipart |
 | `PATCH` | `/api/v1/documents/:id` | Actualiza metadatos del documento |
 | `DELETE` | `/api/v1/documents/:id` | Elimina el documento y el archivo almacenado |
 
-Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Cada `POST /api/v1/documents` recibe **un archivo** y sus metadatos; para cargar varios, el frontend envía una petición por archivo (por ejemplo, con hasta tres cargas concurrentes) y puede limitar cada selección a 20 archivos. Cada archivo obtiene su propio ID, estado y stream SSE. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz puede consultar `/api/v1/documents/count?search=...` para obtener los conteos agrupados por estado, separados del listado paginado; las respuestas mantienen el wrapper estándar de la API. El reemplazo del archivo no hace parte de estos endpoints.
+Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Cada `POST /api/v1/documents` recibe **un archivo** y sus metadatos; para cargar varios, el frontend envía una petición por archivo (hasta el máximo de cargas concurrentes configurado) y puede limitar cada selección a 20 archivos. Cada archivo obtiene su propio ID y estado; los cambios se notifican por el stream SSE compartido. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz puede consultar `/api/v1/documents/count?search=...` para obtener los conteos agrupados por estado, separados del listado paginado; las respuestas mantienen el wrapper estándar de la API. El reemplazo del archivo no hace parte de estos endpoints.
 
 El endpoint `GET /api/v1/documents/:id/file` devuelve el **archivo binario original** con `Content-Disposition: inline` y su tipo MIME. `GET /api/v1/documents/:id/preview` devuelve la copia OCR buscable cuando ya está lista y, mientras tanto o si no existe, el original. El frontend muestra esa copia con PDF.js, que resalta las coincidencias en su ubicación; la descarga siempre usa el original. El derivado se elimina junto con el documento. `GET /api/v1/documents/:id` continúa devolviendo solo metadatos; el texto extraído no se expone como contenido completo.
 
@@ -83,11 +82,11 @@ La carga inicial deja el documento en `PROCESSING`. El backend lo actualiza a `I
 
 ### Eventos en tiempo real (SSE)
 
-La interfaz puede abrir una sola conexión `EventSource` a `GET /api/v1/realtime/documents` para recibir los eventos `document.status` de todos los documentos, cada uno identificado por su `id`. Esto evita mantener una conexión por archivo y que esas conexiones ocupen los espacios disponibles para las solicitudes HTTP del navegador. La ruta individual `GET /api/v1/realtime/documents/{id}` sigue disponible y envía el estado actual seguido de los cambios de ese documento. La conexión del navegador no controla ni interrumpe el worker.
+La interfaz mantiene una sola conexión `EventSource` a `GET /api/v1/realtime/documents` para recibir los eventos `document.status` de todos los documentos, cada uno identificado por su `id`. Esto evita mantener una conexión por archivo y que esas conexiones ocupen los espacios disponibles para las solicitudes HTTP del navegador. El estado actual se obtiene por los endpoints REST de listado y detalle; el stream notifica cambios posteriores y no reproduce eventos perdidos durante una desconexión. La conexión del navegador no controla ni interrumpe el worker.
 
 ```text
 event: document.status
-data: {"id":"3f6c2a1e-0000-0000-0000-000000000000","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.000Z"}
+data: {"id":"3f6c2a1e-0000-0000-0000-000000000000","title":"Maintenance guide","status":"INDEXED","updatedAt":"2026-10-27T18:00:00.000Z"}
 ```
 
 El frontend se conecta con `EventSource`, que reconecta automáticamente si se corta la conexión. Para que funcione desde el navegador, el origen del frontend debe estar permitido en `CORS_ORIGIN`.

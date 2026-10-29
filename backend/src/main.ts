@@ -2,7 +2,8 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { AppModule } from "./app.module.js";
-import { setupSwagger } from "./config/swagger.config.js";
+import { setupSwagger } from "./config/swagger/swagger.config.js";
+import { setupCors } from "./config/cors.config.js";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -11,19 +12,6 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>("PORT") || 3000;
-  const corsOrigins = (
-    configService.get<string>("CORS_ORIGIN") ??
-    "http://localhost:5173,http://127.0.0.1:5173"
-  )
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  app.enableCors({
-    origin: corsOrigins,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Accept", "Content-Type"],
-  });
 
   // Establecer el prefijo global para todas las rutas
   app.setGlobalPrefix("api");
@@ -41,6 +29,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Configuración CORS
+  app.enableCors(setupCors(app));
 
   // Configuración SWAGGER
   setupSwagger(app);
