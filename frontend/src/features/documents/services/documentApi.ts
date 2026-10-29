@@ -112,7 +112,15 @@ export function uploadDocument(file: File, metadata: UploadMetadata, onProgress:
 }
 
 export async function getOriginalFile(id: string, signal?: AbortSignal) {
-  const response = await fetch(`${apiUrl}/documents/${encodeURIComponent(id)}/file`, {
+  return getDocumentFile(id, 'file', signal)
+}
+
+export async function getDocumentPreview(id: string, signal?: AbortSignal) {
+  return getDocumentFile(id, 'preview', signal)
+}
+
+async function getDocumentFile(id: string, kind: 'file' | 'preview', signal?: AbortSignal) {
+  const response = await fetch(`${apiUrl}/documents/${encodeURIComponent(id)}/${kind}`, {
     headers: { Accept: 'application/pdf, text/plain, text/markdown' },
     signal,
   })

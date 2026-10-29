@@ -8,6 +8,7 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 
 - **CRUD de documentos:** listado, carga multipart de archivos TXT/PDF/Markdown con metadatos, actualización de metadatos y eliminación del archivo.
 - **Vista del archivo original:** endpoint de lectura inline para previsualizar el archivo almacenado (PDF, TXT o Markdown).
+- **OCR de PDF escaneados:** genera una copia PDF buscable con capa de texto invisible; el original se conserva y se usa para descargar.
 - **Validación de carga:** revisión de formato, contenido y tamaño máximo configurable.
 - **Persistencia:** metadatos en PostgreSQL mediante Prisma y archivos en `uploads/documents`.
 - **Búsqueda full-text:** PostgreSQL `tsvector`/GIN sobre títulos, metadatos y contenido indexado; no utiliza `LIKE`.
@@ -16,7 +17,7 @@ API REST desarrollada con **NestJS** para la carga, procesamiento, indexación y
 - **API documentada con Swagger:** referencia interactiva de todos los endpoints.
 - **Manejo estructurado de errores:** validación de datos y filtros de excepciones.
 
-La carga persiste el archivo y sus metadatos con estado `PROCESSING` y responde sin esperar la extracción. Un worker del backend recupera los trabajos pendientes desde PostgreSQL, extrae el texto TXT/Markdown/PDF, actualiza el contenido y el índice de búsqueda, y cambia el estado a `INDEXED` o `ERROR`. El worker no depende de la conexión del cliente y vuelve a tomar trabajos pendientes después de un reinicio.
+La carga persiste el archivo original y sus metadatos con estado `PROCESSING` y responde sin esperar el procesamiento. Un worker recupera los trabajos pendientes, ejecuta OCRmyPDF con Tesseract para producir una copia buscable de cada PDF (omite las páginas que ya tienen texto), extrae de esa copia el texto para el índice de búsqueda y cambia el estado a `INDEXED` o `ERROR`. TXT y Markdown se indexan como UTF-8. El worker no depende de la conexión del cliente y vuelve a tomar trabajos pendientes después de un reinicio.
 
 ---
 
@@ -39,7 +40,7 @@ La carga persiste el archivo y sus metadatos con estado `PROCESSING` y responde 
 
 ## 🔎 Búsqueda Full-Text
 
-La ruta `GET /api/v1/search` acepta `q`, `page` y `pageSize` (máximo 100). Admite términos y frases exactas con comillas dobles; la respuesta incluye relevancia, paginación y fragmentos con coincidencias dentro de `<mark>`.
+La ruta `GET /api/v1/search` acepta `q`, `page` y `pageSize` (máximo 100). Las búsquedas normales usan prefijos de lexema (`prue` encuentra `prueba`; varios términos se combinan con AND). Las frases entre comillas dobles mantienen la búsqueda exacta con la sintaxis de PostgreSQL websearch. La respuesta incluye relevancia, paginación y fragmentos con coincidencias dentro de `<mark>`.
 
 - Un trigger mantiene `searchVector` con título, metadatos, etiquetas y contenido; un índice **GIN** acelera las consultas.
 - Las consultas parametrizadas usan `prisma.$queryRaw`, `websearch_to_tsquery`, `ts_rank_cd` y `ts_headline`; no utilizan `LIKE`.
@@ -58,6 +59,7 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 | `GET` | `/api/v1/documents/count` | Devuelve los conteos de documentos por estado |
 | `GET` | `/api/v1/documents/:id` | Consulta los metadatos y el estado de un documento |
 | `GET` | `/api/v1/documents/:id/file` | Sirve el archivo original para previsualización inline |
+| `GET` | `/api/v1/documents/:id/preview` | Sirve la copia OCR buscable del PDF o el original si aún no existe |
 | `GET` | `/api/v1/search?q=motor&page=1&pageSize=20` | Busca documentos por términos o frases con paginación y resaltado |
 | `GET` | `/api/v1/realtime/documents` | SSE compartido con cambios `document.status` de todos los documentos |
 | `GET` | `/api/v1/realtime/documents/:id` | SSE con estado actual y cambios `document.status` del documento |
@@ -67,7 +69,7 @@ La referencia completa e interactiva está en Swagger: <http://localhost:3000/do
 
 Los metadatos requeridos para la carga son `title`, `author`, `category` y `version`; `tags` es opcional. El tamaño máximo se configura con `MAX_FILE_SIZE_MB`. Cada `POST /api/v1/documents` recibe **un archivo** y sus metadatos; para cargar varios, el frontend envía una petición por archivo (por ejemplo, con hasta tres cargas concurrentes) y puede limitar cada selección a 20 archivos. Cada archivo obtiene su propio ID, estado y stream SSE. Los archivos se guardan en `backend/uploads/documents` (directorio ignorado por Git) y PostgreSQL conserva sus metadatos y el trabajo pendiente. La carga responde con `PROCESSING`; el backend extrae el texto en segundo plano y publica `INDEXED` o `ERROR` por SSE. La interfaz puede consultar `/api/v1/documents/count?search=...` para obtener los conteos agrupados por estado, separados del listado paginado; las respuestas mantienen el wrapper estándar de la API. El reemplazo del archivo no hace parte de estos endpoints.
 
-El endpoint `GET /api/v1/documents/:id/file` devuelve el **archivo binario original** con `Content-Disposition: inline` y su tipo MIME. El frontend renderiza los PDF con PDF.js y carga TXT/Markdown para el resaltado. `GET /api/v1/documents/:id` continúa devolviendo solo metadatos; el texto extraído no se expone como contenido completo.
+El endpoint `GET /api/v1/documents/:id/file` devuelve el **archivo binario original** con `Content-Disposition: inline` y su tipo MIME. `GET /api/v1/documents/:id/preview` devuelve la copia OCR buscable cuando ya está lista y, mientras tanto o si no existe, el original. El frontend muestra esa copia con PDF.js, que resalta las coincidencias en su ubicación; la descarga siempre usa el original. El derivado se elimina junto con el documento. `GET /api/v1/documents/:id` continúa devolviendo solo metadatos; el texto extraído no se expone como contenido completo.
 
 ### Estados de un documento
 
@@ -120,6 +122,7 @@ backend/
 - [Node.js](https://nodejs.org/) 22 o superior
 - npm, pnpm o yarn
 - [Docker](https://www.docker.com/) con Docker Compose, para levantar PostgreSQL
+- Para ejecutar el backend fuera de Docker y procesar PDFs: OCRmyPDF y Tesseract con los idiomas configurados en `OCR_LANGUAGES` (por defecto, español e inglés).
 
 ### 2. Instalación de dependencias
 
@@ -145,6 +148,8 @@ Contenido de `.env.example`:
 PORT=3000
 NODE_ENV=development
 MAX_FILE_SIZE_MB=25
+OCR_LANGUAGES=spa+eng
+OCR_TIMEOUT_SECONDS=600
 # ==============================================
 # 🗄️ DATABASE CONFIGURATION
 # ==============================================
@@ -164,6 +169,8 @@ SWAGGER_PASSWORD=Test1234@
 | `NODE_ENV` | Entorno de ejecución (`development`, `test`, `production`) |
 | `PORT` | Puerto de la API |
 | `MAX_FILE_SIZE_MB` | Tamaño máximo permitido por archivo cargado |
+| `OCR_LANGUAGES` | Idiomas de Tesseract separados por `+` (por defecto `spa+eng`) |
+| `OCR_TIMEOUT_SECONDS` | Tiempo máximo de OCR por PDF (por defecto 600 segundos) |
 | `DATABASE_URL` | Cadena de conexión a PostgreSQL. Usado por Prisma. |
 | `DATABASE_MAX_POOL_SIZE` | Tamaño máximo del pool de conexiones de la DB. |
 | `DATABASE_CONNECTION_TIMEOUT_MS` | Tiempo máximo de espera para establecer conexión con la DB. |

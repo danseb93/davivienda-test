@@ -21,6 +21,7 @@ flowchart LR
         SRCH["Search"]
         RT["Realtime<br/>SSE + Subject RxJS"]
         IDX["Worker de indexación"]
+        OCR["OCRmyPDF + Tesseract"]
         PRISMA["PrismaService<br/>pool pg"]
     end
 
@@ -40,9 +41,11 @@ flowchart LR
     RT --> PRISMA
     IDX --> PRISMA
     IDX -->|publish| RT
+    IDX --> OCR
 
     DOC --> DISK
     IDX --> DISK
+    OCR -->|PDF buscable derivado| DISK
 
     PRISMA --> TBL
     TBL -->|trigger| TS
@@ -91,7 +94,14 @@ sequenceDiagram
     loop Cada 1 s mientras haya pendientes
         W->>DB: Toma un PROCESSING (FOR UPDATE SKIP LOCKED)
         W->>ST: read(storageName)
-        W->>W: Extrae texto (TXT/MD utf8, PDF con pdf-parse)
+        alt PDF
+            W->>W: OCRmyPDF --skip-text + Tesseract
+            Note over W: Conserva páginas originales;<br/>añade texto OCR invisible
+            W->>ST: Guarda copia .searchable.pdf
+            W->>W: Extrae texto de la copia con pdf-parse
+        else TXT o Markdown
+            W->>W: Decodifica UTF-8
+        end
         alt Éxito
             W->>DB: UPDATE content + status INDEXED
             Note over DB: Misma transacción,<br/>el trigger refresca el vector
@@ -135,9 +145,13 @@ sequenceDiagram
     DS-->>U: 200 (items, total, page, pageSize, totalPages)
 ```
 
-Detalle de la consulta de la página: `websearch_to_tsquery('simple', q)` contra `searchVector`, orden por `ts_rank_cd DESC` y luego `createdAt DESC`, con `ts_headline` sobre `concat_ws(title, author, category, tags, content)`.
+Detalle de la consulta de la página: los términos normales se convierten en lexemas prefijo con `to_tsquery('simple', ...)` (por ejemplo, `prue:*` encuentra `prueba`); varios términos se combinan con AND. Las consultas entre comillas y operadores mantienen `websearch_to_tsquery('simple', q)`. Ambas consultan `searchVector` y ordenan por `ts_rank_cd DESC` y luego `createdAt DESC`. Para no ejecutar `ts_headline` sobre contenidos OCR de varios millones de caracteres, el fragmento se limita a 3.000 caracteres alrededor de la primera aparición del término de búsqueda; los metadatos completos también se incluyen.
 
 > Solo se devuelven documentos con `status = 'INDEXED'`. Uno en `PROCESSING` o `ERROR` nunca aparece en los resultados aunque su fila exista (`prisma-search.repository.ts`).
+
+### 1.5 Vista y resaltado de PDFs
+
+El frontend pide `GET /documents/:id/preview`: el backend sirve la copia `.searchable.pdf` si ya existe y, mientras se procesa o si el archivo no es PDF, sirve el original. PDF.js renderiza esa capa OCR invisible sobre las imágenes originales y coloca resaltados en las coordenadas del texto reconocido. `GET /documents/:id/file` continúa entregando el original para descarga. El PDF derivado se guarda junto al original y se elimina al borrar el documento.
 
 ---
 
@@ -152,6 +166,7 @@ El enunciado exige que toda búsqueda responda entre 400 ms y 1 s, y prohíbe `L
 - **Límites duros en el DTO.** Sin tope, un `pageSize` arbitrario obligaría a ordenar y materializar miles de filas con su snippet. Se fija `pageSize` en [1, 100], `q` en 200 caracteres como máximo y fragmentos acotados (`MaxFragments=2`, `MinWords=8`, `MaxWords=24`). Así el coste de cada consulta tiene techo, sin importar lo que pida el cliente.
 - **Página y total en paralelo.** Calcular `count(*)` después de la página aumenta la latencia percibida aproximadamente al doble. Con `Promise.all` el tiempo total es el de la consulta más lenta. Se prefirió el conteo exacto a las estimaciones de catálogo porque el conjunto filtrado ya usa el mismo índice GIN.
 - **Pool de conexiones reutilizado.** Abrir una conexión por petición sumaría decenas o cientos de milisegundos de handshake a cada búsqueda. `@prisma/adapter-pg` mantiene un pool (`DATABASE_MAX_POOL_SIZE=10`) con timeouts de conexión e inactividad, de modo que el coste de conectar se amortiza y el agotamiento se detecta rápido en lugar de dejar la petición colgada.
+- **Fragmento de búsqueda acotado.** `ts_headline` opera sobre los metadatos y una ventana de 3.000 caracteres alrededor del primer término encontrado en el contenido, no sobre el documento OCR completo. Esto mantiene contexto relevante y evita que documentos largos dominen la latencia.
 - **No transferir contenido innecesario.** Incluir `content` completo en `/documents` dominaría el tamaño de la respuesta y el tiempo de serialización. Los listados y detalles excluyen `content` y `storageName`, y el buscador devuelve solo el snippet de `ts_headline`.
 
 ### 2.2 Stack
@@ -162,7 +177,8 @@ El enunciado exige que toda búsqueda responda entre 400 ms y 1 s, y prohíbe `L
 | **PostgreSQL 16** | Una sola base cubre metadatos, contenido, estados y búsqueda: `tsvector`/`tsquery`, GIN, arrays (`tags TEXT[]`), `ENUM` y `FOR UPDATE SKIP LOCKED`. Evita sincronizar un buscador externo |
 | **Prisma 6 + `@prisma/adapter-pg`** | Modelo declarativo y migraciones SQL versionadas. El cliente tipado no expone full-text, así que se usa `prisma.$queryRaw` con `Prisma.sql` (parametrizado, sin interpolación insegura). `pg` aporta el pool |
 | **PostgreSQL FTS** | Ver §2.3 |
-| **pdf-parse (`PDFParse`)** | Es el único paso de binario a texto (PDF). TXT y MD se leen como UTF-8. El parser se libera con `finally { parser.destroy() }` |
+| **OCRmyPDF + Tesseract** | En PDFs, `--skip-text` conserva las páginas que ya tienen texto y agrega OCR invisible a las páginas escaneadas. Idiomas configurables (`OCR_LANGUAGES`, por defecto `spa+eng`) y timeout (`OCR_TIMEOUT_SECONDS`). El original no se modifica; la copia buscable es el PDF del visor y alimenta `pdf-parse` para indexar el texto |
+| **pdf-parse (`PDFParse`)** | Extrae el texto del PDF buscable para PostgreSQL FTS. TXT y Markdown se leen como UTF-8. El parser se libera con `finally { parser.destroy() }` |
 | **Multer `memoryStorage()`** | El buffer ya hace falta para validar la cabecera `%PDF-` y la ausencia de bytes nulos antes de escribir en disco. Límite por `MAX_FILE_SIZE_MB` (25 MB por defecto) |
 | **Vitest (+ Supertest en e2e)** | Un solo runner para pruebas unitarias e de integración con ESM/TS. Las e2e usan una base separada, `docs_db_test` |
 | **Docker Compose** | `db` con healthcheck, `backend` con `depends_on: service_healthy` y `npx prisma migrate deploy` al arrancar (Dockerfile), y `frontend` dependiente de `backend` |

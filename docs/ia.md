@@ -19,6 +19,7 @@ También se utilizó **SDD (Specification-Driven Development)** al preparar y re
 ## 3. Casos de uso de IA
 
 - **Backend y API:** DTOs y validaciones de carga; endpoints de documentos; búsqueda full-text con PostgreSQL; paginación, conteos, extracción e indexación asíncrona; estados y notificaciones SSE.
+- **Optimización de búsqueda:** análisis del tiempo de respuesta con `EXPLAIN (ANALYZE, BUFFERS)` y mediciones directas de la API. Se identificó que `ts_headline` procesaba documentos OCR de alrededor de cuatro millones de caracteres; se acotó su entrada a una ventana contextual de 3.000 caracteres alrededor de la coincidencia, conservando el ranking, el conteo y el resaltado. La latencia observada para la consulta de ejemplo bajó de aproximadamente 3,2 s a 0,42–0,46 s.
 - **Frontend:** integración con REST y SSE; carga por lotes; filtros y búsqueda; paginación; visor PDF con resaltado; validación de formatos y corrección de estados vacíos y navegación.
 - **Configuración y documentación:** revisión de variables de entorno, Docker, README y documentación de endpoints.
 - **Pruebas y depuración:** apoyo para crear pruebas dirigidas, analizar errores de compilación y lint, y rastrear problemas entre frontend y backend.
@@ -28,16 +29,17 @@ También se utilizó **SDD (Specification-Driven Development)** al preparar y re
 Los prompts se ajustaron de forma iterativa según el alcance y la arquitectura del proyecto. Ejemplos representativos:
 
 - **API de documentos:** “Basado en el módulo de perfiles y los requisitos de la prueba, crea el módulo Documents con listado, carga, actualización y eliminación; deja la búsqueda fuera de este cambio”.
-- **Búsqueda:** “Implementa HU-02 con PostgreSQL Full-Text Search, consultas parametrizadas, paginación y fragmentos resaltados”. Después se precisó que la búsqueda debía estar en un módulo independiente y seguir el patrón de repositorio.
+- **Búsqueda:** “Implementa con PostgreSQL Full-Text Search, consultas parametrizadas, paginación y fragmentos resaltados”. Después se precisó que la búsqueda debía estar en un módulo independiente y seguir el patrón de repositorio.
+- **Rendimiento de búsqueda:** “Aísla la demora de una búsqueda lenta antes de cambiar el ORM o los índices; compara el plan SQL con la consulta real, mide sus partes y optimiza la causa comprobada sin alterar resultados ni resaltado”. La revisión de los planes mostró que el costo estaba en generar `ts_headline` sobre el contenido OCR extenso, no en el conteo ni en Prisma.
 - **Frontend:** “Separa los componentes y lleva la lógica reutilizable a hooks, respetando la arquitectura Feature-Based y conectando los endpoints existentes”.
 - **UI y estilo:** se indicó utilizar `design.md` como referencia para tokens y estilos, tomando el sitio de Davivienda evaluado con Gemini como guía visual.
 - **SDD:** en los cambios de mayor alcance se precisaron requisitos, límites, responsabilidades y comportamientos esperados antes de implementar; las observaciones posteriores se usaron para acotar o corregir la solución.
 
 ## 5. Validación humana
 
-El candidato revisó las modificaciones contra los requisitos, la arquitectura definida y los patrones existentes. Se inspeccionaron controladores, DTOs, servicios, repositorios, consultas Prisma, hooks, componentes, contratos REST/SSE y documentación. También se verificaron los formatos de archivo, estados de procesamiento, paginación y manejo de resultados.
+El candidato suministro el modelo inicial completo de los servicios en el backend (controlador, servicio, dominio, repositorio, enums y configuracion de ORM - Prisma), revisó las modificaciones contra los requisitos, la arquitectura definida y los patrones existentes. Se inspeccionaron controladores, DTOs, servicios, repositorios, consultas Prisma, hooks, componentes, contratos REST/SSE y documentación. También se verificaron los formatos de archivo, estados de procesamiento, paginación y manejo de resultados.
 
-Según cada contribución, se ejecutaron pruebas dirigidas, builds, lint, validación del esquema Prisma y `git diff --check`. Entre las validaciones reportadas, las pruebas de búsqueda/indexación y SSE, las pruebas de documentos y realtime, y los builds/lint de frontend y backend finalizaron correctamente en sus respectivas ejecuciones. 
+Según cada contribución, se ejecutaron pruebas dirigidas, builds, lint, validación del esquema Prisma y `git diff --check`. Entre las validaciones reportadas, las pruebas de búsqueda/indexación y SSE, las pruebas de documentos y realtime, y los builds/lint de frontend y backend finalizaron correctamente en sus respectivas ejecuciones. Para la optimización se verificaron las pruebas del backend, el build y lint, y se midió la consulta de búsqueda en la base y el endpoint HTTP antes y después del cambio. La respuesta pasó de aproximadamente 3,2 s a 0,42–0,46 s en el entorno local con los documentos de prueba disponibles. Las mediciones dependen del conjunto de datos y del entorno.
 
 ## 6. Resultado y responsabilidad
 

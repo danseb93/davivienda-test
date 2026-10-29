@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import type { DocumentItem } from '../interfaces/document.interface'
 import { Icon } from './Icon'
+import { createSearchExpression } from '../utils/searchExpression'
 
 const PdfOriginalPreview = lazy(() => import('./PdfOriginalPreview').then((module) => ({
   default: module.PdfOriginalPreview,
@@ -10,6 +11,7 @@ interface DocumentViewerProps {
   isOpen: boolean
   document: DocumentItem | null
   objectUrl: string | null
+  previewUrl: string | null
   text: string | null
   searchTerm: string
   isLoading: boolean
@@ -18,7 +20,7 @@ interface DocumentViewerProps {
   onRetry: () => void
 }
 
-export function DocumentViewer({ isOpen, document, objectUrl, text, searchTerm, isLoading, error, onClose, onRetry }: DocumentViewerProps) {
+export function DocumentViewer({ isOpen, document, objectUrl, previewUrl, text, searchTerm, isLoading, error, onClose, onRetry }: DocumentViewerProps) {
   const [activeMatchState, setActiveMatchState] = useState({ identity: '', index: 0 })
   const marks = useRef<Array<HTMLElement | null>>([])
   const identity = `${document?.id ?? ''}:${searchTerm}`
@@ -71,9 +73,9 @@ export function DocumentViewer({ isOpen, document, objectUrl, text, searchTerm, 
               <p role="alert" className="mb-4 text-sm text-[#de350b]">{error}</p>
               <button type="button" onClick={onRetry} className="rounded-lg border border-[#dedede] bg-white px-4 py-2 text-sm font-semibold">Reintentar</button>
             </div>
-          ) : isPdf && objectUrl ? (
+          ) : isPdf && previewUrl ? (
             <Suspense fallback={<div className="flex h-full min-h-[50vh] items-center justify-center gap-3 text-sm text-[#707070]"><Icon name="clock" className="h-5 w-5 animate-spin text-[#c41219]" /> Preparando visor PDF…</div>}>
-              <PdfOriginalPreview key={`${document?.id}:${searchTerm}`} url={objectUrl} searchTerm={searchTerm} />
+              <PdfOriginalPreview key={`${document?.id}:${searchTerm}`} url={previewUrl} searchTerm={searchTerm} />
             </Suspense>
           ) : text !== null ? (
             <pre className="m-4 whitespace-pre-wrap break-words rounded-xl border border-[#e7e7e7] bg-white p-5 font-mono text-[13px] leading-6 text-[#333] shadow-sm sm:m-6 sm:p-7">
@@ -100,14 +102,8 @@ interface HighlightRange {
 }
 
 function getHighlights(text: string, searchTerm: string): HighlightRange[] {
-  const cleanedTerm = searchTerm.trim().replace(/^"|"$/g, '')
-  if (!cleanedTerm) return []
-  const isExactPhrase = /^".*"$/.test(searchTerm.trim())
-  const words = isExactPhrase ? [cleanedTerm] : cleanedTerm.split(/\s+/).filter(Boolean)
-  const alternatives = [...new Set(words)].sort((left, right) => right.length - left.length)
-  if (!alternatives.length) return []
-
-  const expression = new RegExp(alternatives.map(escapeRegExp).join('|'), 'gi')
+  const expression = createSearchExpression(searchTerm)
+  if (!expression) return []
   const highlights: HighlightRange[] = []
   let match: RegExpExecArray | null
   while ((match = expression.exec(text)) !== null) {
@@ -135,8 +131,4 @@ function renderHighlightedText(text: string, highlights: HighlightRange[], activ
   })
   if (cursor < text.length) parts.push(text.slice(cursor))
   return parts
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

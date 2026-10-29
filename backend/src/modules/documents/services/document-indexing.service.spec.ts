@@ -18,9 +18,9 @@ describe('DocumentIndexingService', () => {
       tags: ['engine'],
       version: '1.0',
       content: '',
-      fileName: 'manual.txt',
-      storageName: 'stored-file.txt',
-      mimeType: 'text/plain',
+      fileName: 'manual.pdf',
+      storageName: 'stored-file.pdf',
+      mimeType: 'application/pdf',
       fileSize: 24,
       status: 'PROCESSING',
       createdAt: new Date(),
@@ -52,10 +52,15 @@ describe('DocumentIndexingService', () => {
       processNextPending,
     } satisfies DocumentRepository;
     const storage = {
-      read: vi.fn().mockResolvedValue(Buffer.from('Document contents')),
+      read: vi.fn().mockResolvedValue(Buffer.from('%PDF-original')),
+      storeSearchablePdf: vi.fn(),
     };
+    const searchableBuffer = Buffer.from('%PDF-searchable');
     const extractor = {
       extract: vi.fn().mockResolvedValue('Document contents'),
+    };
+    const searchablePdf = {
+      makeSearchable: vi.fn().mockResolvedValue(searchableBuffer),
     };
     const realtimeEvents = new RealtimeEventService();
     const publish = vi.spyOn(realtimeEvents, 'publish');
@@ -63,16 +68,24 @@ describe('DocumentIndexingService', () => {
       repository,
       storage,
       extractor,
+      searchablePdf,
       realtimeEvents,
     );
 
     service.onModuleInit();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(storage.read).toHaveBeenCalledWith('stored-file.txt');
+    expect(storage.read).toHaveBeenCalledWith('stored-file.pdf');
+    expect(searchablePdf.makeSearchable).toHaveBeenCalledWith(
+      Buffer.from('%PDF-original'),
+    );
+    expect(storage.storeSearchablePdf).toHaveBeenCalledWith(
+      'stored-file.pdf',
+      searchableBuffer,
+    );
     expect(extractor.extract).toHaveBeenCalledWith(
-      Buffer.from('Document contents'),
-      'text/plain',
+      searchableBuffer,
+      'application/pdf',
     );
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({ id: document.id, status: 'INDEXED' }),

@@ -101,9 +101,12 @@ button {
 }
 
 .pdf-page .textLayer .pdf-search-highlight {
-  color: transparent;
-  background: rgb(255 190 45 / 55%);
-  box-shadow: 0 0 0 1px rgb(237 28 36 / 40%);
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 2px;
+  background: rgb(255 190 45 / 42%);
+  box-shadow: 0 0 0 1px rgb(237 28 36 / 20%);
 }
 
 @keyframes toast-enter {

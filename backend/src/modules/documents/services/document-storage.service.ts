@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
 
 const ACCEPTED_TYPES: Record<string, string[]> = {
@@ -79,21 +79,57 @@ export class DocumentStorageService {
       await unlink(this.resolveStoredFile(storageName));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return;
+        // Continue so a derived searchable PDF is removed even if the original is missing.
+      } else {
+        this.logRemovalError(storageName, error);
+        throw new InternalServerErrorException(
+          'The document file could not be removed',
+        );
       }
+    }
 
-      this.logger.error(
-        `Could not remove stored document file "${storageName}"`,
-        error instanceof Error ? error.stack : undefined,
-      );
-      throw new InternalServerErrorException(
-        'The document file could not be removed',
-      );
+    if (storageName.toLowerCase().endsWith('.pdf')) {
+      try {
+        await unlink(this.resolveSearchableFile(storageName));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          this.logRemovalError(storageName, error);
+          throw new InternalServerErrorException(
+            'The document file could not be removed',
+          );
+        }
+      }
     }
   }
 
   read(storageName: string): Promise<Buffer> {
     return readFile(this.resolveStoredFile(storageName));
+  }
+
+  async readPreview(storageName: string): Promise<Buffer> {
+    if (storageName.toLowerCase().endsWith('.pdf')) {
+      try {
+        return await readFile(this.resolveSearchableFile(storageName));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+    return this.read(storageName);
+  }
+
+  async storeSearchablePdf(storageName: string, content: Buffer): Promise<void> {
+    if (!storageName.toLowerCase().endsWith('.pdf') || !content.length) {
+      throw new InternalServerErrorException('Invalid searchable PDF output');
+    }
+
+    const temporaryName = `${randomUUID()}.tmp`;
+    const temporaryPath = this.resolveStoredFile(temporaryName);
+    try {
+      await writeFile(temporaryPath, content, { flag: 'wx' });
+      await rename(temporaryPath, this.resolveSearchableFile(storageName));
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
   }
 
   private resolveStoredFile(storageName: string): string {
@@ -102,5 +138,21 @@ export class DocumentStorageService {
     }
 
     return join(this.storageDirectory, storageName);
+  }
+
+  private resolveSearchableFile(storageName: string): string {
+    if (!storageName || basename(storageName) !== storageName) {
+      throw new InternalServerErrorException('Invalid stored document path');
+    }
+
+    const originalName = storageName.replace(/\.pdf$/i, '');
+    return join(this.storageDirectory, `${originalName}.searchable.pdf`);
+  }
+
+  private logRemovalError(storageName: string, error: unknown): void {
+    this.logger.error(
+      `Could not remove stored document file "${storageName}"`,
+      error instanceof Error ? error.stack : undefined,
+    );
   }
 }

@@ -129,6 +129,37 @@ export class DocumentsController {
     return new StreamableFile(file);
   }
 
+  @Get(':id/preview')
+  @ApiOperation({
+    summary: 'Stream the searchable PDF preview or the original document',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async getPreviewFile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const document = await this.documentFinder.findById(id);
+    const file = await this.documentStorage.readPreview(document.storageName);
+    const encodedFileName = encodeURIComponent(document.fileName).replace(
+      /[!'()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+
+    response.setHeader('Content-Type', document.mimeType);
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodedFileName}`,
+    );
+    response.setHeader(
+      'Access-Control-Expose-Headers',
+      'Content-Disposition, X-Document-Name',
+    );
+    response.setHeader('X-Document-Name', encodedFileName);
+    response.setHeader('Cache-Control', 'private, no-store');
+
+    return new StreamableFile(file);
+  }
+
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload a document with its metadata' })
