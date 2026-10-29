@@ -152,7 +152,7 @@ export function useDocuments(notify: Notify) {
         reportedStreamError = false
         setDocuments((current) => current.map((document) =>
           document.id === event.id
-            ? { ...document, status: event.status, uploadedAt: formatDate(event.updatedAt) }
+            ? { ...document, status: event.status, uploadedAt: event.updatedAt }
             : document,
         ))
         setUploads((current) => current.map((upload) =>
@@ -350,8 +350,4 @@ export function useDocuments(notify: Notify) {
 
 function getMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Ocurrió un error inesperado.'
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }

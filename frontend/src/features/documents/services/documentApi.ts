@@ -2,12 +2,25 @@ import type {
   ApiDocument,
   ApiDocumentCounts,
   ApiDocumentPage,
-  ApiPagination,
+  ApiPaginatedResponse,
   ApiResponse,
+  ApiResponseWithData,
   ApiSearchPage,
+  ApiSearchResult,
   DocumentStatusEvent,
   UploadMetadata,
+  UpdateDocumentMetadata,
 } from '../interfaces/api.interface'
+import type { DocumentStatus } from '../types/document.type'
+
+type ApiDocumentWire = Omit<ApiDocument, 'createdAt' | 'updatedAt'> & {
+  createdAt: string
+  updatedAt: string
+}
+
+type DocumentStatusEventWire = Omit<DocumentStatusEvent, 'updatedAt'> & {
+  updatedAt: string
+}
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
 const apiUrl = `${apiBaseUrl}/api/v1`
@@ -34,7 +47,7 @@ export async function listDocuments(query: {
   page: number
   limit: number
   search?: string
-  status?: string
+  status?: DocumentStatus
 }): Promise<ApiDocumentPage> {
   const params = new URLSearchParams({
     page: String(query.page),
@@ -42,46 +55,65 @@ export async function listDocuments(query: {
   })
   if (query.search) params.set('search', query.search)
   if (query.status) params.set('status', query.status)
-  const response = await request<
-    ApiResponse<ApiDocument[]> & {
-      pagination: ApiPagination
-    }
-  >(`/documents?${params}`)
-  return { items: response.data, pagination: response.pagination }
+  const response = await request<ApiPaginatedResponse<ApiDocumentWire[]>>(
+    `/documents?${params}`,
+  )
+  return {
+    items: response.data.map(deserializeDocument),
+    pagination: response.pagination,
+  }
 }
 
 export async function countDocuments(): Promise<ApiDocumentCounts> {
-  const response = await request<ApiResponse<ApiDocumentCounts>>('/documents/count')
+  const response = await request<ApiResponseWithData<ApiDocumentCounts>>(
+    '/documents/count',
+  )
   return response.data
 }
 
-export async function getDocument(id: string) {
-  const response = await request<ApiResponse<ApiDocument>>(`/documents/${encodeURIComponent(id)}`)
-  return response.data
+export async function getDocument(id: string): Promise<ApiDocument> {
+  const response = await request<ApiResponseWithData<ApiDocumentWire>>(
+    `/documents/${encodeURIComponent(id)}`,
+  )
+  return deserializeDocument(response.data)
 }
 
-export async function updateDocument(id: string, data: Omit<UploadMetadata, 'tags'> & { tags: string[] }) {
-  const response = await request<ApiResponse<ApiDocument>>(`/documents/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  return response.data
+export async function updateDocument(
+  id: string,
+  data: UpdateDocumentMetadata,
+): Promise<ApiDocument> {
+  const response = await request<ApiResponseWithData<ApiDocumentWire>>(
+    `/documents/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    },
+  )
+  return deserializeDocument(response.data)
 }
 
 export async function deleteDocument(id: string) {
   await request<ApiResponse<null>>(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export async function searchDocuments(query: string, page = 1, limit = 10) {
+export async function searchDocuments(
+  query: string,
+  page = 1,
+  limit = 10,
+): Promise<ApiSearchPage> {
   const params = new URLSearchParams({ q: query, page: String(page), limit: String(limit) })
-  const response = await request<
-    ApiResponse<ApiSearchPage['items']> & { pagination: ApiPagination }
-  >(`/search?${params}`)
+  const response = await request<ApiPaginatedResponse<ApiSearchResult[]>>(
+    `/search?${params}`,
+  )
   return { items: response.data, pagination: response.pagination }
 }
 
-export function uploadDocument(file: File, metadata: UploadMetadata, onProgress: (progress: number) => void) {
+export function uploadDocument(
+  file: File,
+  metadata: UploadMetadata,
+  onProgress: (progress: number) => void,
+): Promise<ApiDocument> {
   return new Promise<ApiDocument>((resolve, reject) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -98,9 +130,11 @@ export function uploadDocument(file: File, metadata: UploadMetadata, onProgress:
       if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
     })
     xhr.addEventListener('load', () => {
-      const body = parseResponse<ApiResponse<ApiDocument>>(xhr.responseText)
+      const body = parseResponse<ApiResponseWithData<ApiDocumentWire>>(
+        xhr.responseText,
+      )
       if (xhr.status >= 200 && xhr.status < 300 && body?.data) {
-        resolve(body.data)
+        resolve(deserializeDocument(body.data))
         return
       }
       reject(new Error(getErrorMessage(body, xhr.status)))
@@ -145,13 +179,24 @@ export function subscribeToDocuments(
   const source = new EventSource(`${apiUrl}/realtime/documents`)
   source.addEventListener('document.status', (event) => {
     try {
-      onStatus(JSON.parse((event as MessageEvent<string>).data) as DocumentStatusEvent)
+      const statusEvent = JSON.parse(
+        (event as MessageEvent<string>).data,
+      ) as DocumentStatusEventWire
+      onStatus({ ...statusEvent, updatedAt: new Date(statusEvent.updatedAt) })
     } catch {
       onError()
     }
   })
   source.onerror = onError
   return source
+}
+
+function deserializeDocument(document: ApiDocumentWire): ApiDocument {
+  return {
+    ...document,
+    createdAt: new Date(document.createdAt),
+    updatedAt: new Date(document.updatedAt),
+  }
 }
 
 function parseResponse<T>(value: string): T | null {

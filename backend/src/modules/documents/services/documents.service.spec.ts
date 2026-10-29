@@ -185,8 +185,8 @@ describe('document services', () => {
     };
     const service = new DocumentFinderService(repository);
 
-    await expect(service.findCounts(' manual ')).resolves.toEqual(counts);
-    expect(findCounts).toHaveBeenCalledWith('manual');
+    await expect(service.findCounts()).resolves.toEqual(counts);
+    expect(findCounts).toHaveBeenCalledOnce();
   });
 
   it('returns not found when looking up a missing document', async () => {

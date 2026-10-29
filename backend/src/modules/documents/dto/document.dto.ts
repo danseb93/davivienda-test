@@ -14,6 +14,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { BaseQueryDto } from '../../../common/dto/base-query.dto.js';
+import { DocumentStatus as DocumentStatusValues } from '../../../common/enums/document-status.enum.js';
 import {
   ResponseWrapperDto,
   ResponseWrapperWithPaginationDto,
@@ -91,15 +92,15 @@ export class CreateDocumentDto extends BaseDocumentDto {
 }
 
 // 3. DTO de Actualización (Vuelve opcionales todas las propiedades de creación)
-export class UpdateDocumentDto extends PartialType(CreateDocumentDto) {}
+export class UpdateDocumentDto extends PartialType(BaseDocumentDto) {}
 
 export class DocumentQueryDto extends BaseQueryDto {
   @ApiPropertyOptional({
-    enum: ['PROCESSING', 'INDEXED', 'ERROR'],
+    enum: Object.values(DocumentStatusValues),
     description: 'Filter documents by processing status',
   })
   @IsOptional()
-  @IsIn(['PROCESSING', 'INDEXED', 'ERROR'])
+  @IsIn(Object.values(DocumentStatusValues))
   declare readonly status?: DocumentStatus;
 
   @ApiPropertyOptional({
@@ -125,8 +126,8 @@ export class DocumentDto extends BaseDocumentDto {
   @ApiProperty({ example: 24576 })
   fileSize!: number;
 
-  @ApiProperty({ enum: ['PROCESSING', 'INDEXED', 'ERROR'] })
-  status!: string;
+  @ApiProperty({ enum: Object.values(DocumentStatusValues) })
+  status!: DocumentStatus;
 
   @ApiProperty()
   createdAt!: Date;
@@ -162,17 +163,6 @@ export class DocumentCountsDto {
 export class DocumentCountsResponseDto extends ResponseWrapperDto<DocumentCountsDto> {
   @ApiProperty({ type: DocumentCountsDto })
   declare data: DocumentCountsDto;
-}
-
-export class DocumentCountQueryDto {
-  @ApiPropertyOptional({
-    description: 'Search term to filter counts by document metadata',
-    maxLength: 50,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  readonly search?: string;
 }
 
 export class DeleteDocumentResponseDto extends ResponseWrapperDto {}

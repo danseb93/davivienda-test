@@ -73,7 +73,7 @@ sequenceDiagram
 
 #### `GET /api/v1/documents/count`
 
-Devuelve los conteos de documentos por estado, opcionalmente filtrados por búsqueda.
+Devuelve los conteos globales de documentos por estado; no acepta filtros.
 
 ```mermaid
 sequenceDiagram
@@ -84,9 +84,9 @@ sequenceDiagram
    participant RP as Repository
    participant DB as PostgreSQL
 
-   U->>C: GET /api/v1/documents/count?search=...
-   C->>FS: findCounts(search)
-   FS->>RP: findCounts(search normalizado)
+   U->>C: GET /api/v1/documents/count
+   C->>FS: findCounts()
+   FS->>RP: findCounts()
    RP->>DB: Cuenta por estado
    DB-->>RP: Conteos
    RP-->>FS: Conteos

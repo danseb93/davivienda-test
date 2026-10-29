@@ -96,12 +96,12 @@ describe('DocumentsController document counts', () => {
       {} as DocumentStorageService,
     );
 
-    await expect(controller.findCounts({ search: 'manual' })).resolves.toEqual({
+    await expect(controller.findCounts()).resolves.toEqual({
       statusCode: 200,
       success: true,
       message: 'Document counts retrieved successfully',
       data: counts,
     });
-    expect(findCounts).toHaveBeenCalledWith('manual');
+    expect(findCounts).toHaveBeenCalledOnce();
   });
 });

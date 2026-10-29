@@ -71,10 +71,9 @@ export class PrismaDocumentRepository implements DocumentRepository {
     return { items, total };
   }
 
-  async findCounts(search?: string): Promise<DocumentCounts> {
+  async findCounts(): Promise<DocumentCounts> {
     const statusCounts = await this.prisma.document.groupBy({
       by: ['status'],
-      where: createSearchConditions(search),
       _count: { _all: true },
     });
     const counts: DocumentCounts = {

@@ -1,11 +1,14 @@
 import type { DocumentStatus } from '../types/document.type'
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T = null> {
   statusCode: number
   success: boolean
   message: string
+  data?: T
+}
+
+export interface ApiResponseWithData<T> extends ApiResponse<T> {
   data: T
-  pagination?: ApiPagination
 }
 
 export interface ApiPagination {
@@ -13,6 +16,10 @@ export interface ApiPagination {
   limit: number
   total: number
   totalPages: number
+}
+
+export interface ApiPaginatedResponse<T> extends ApiResponseWithData<T> {
+  pagination: ApiPagination
 }
 
 export interface ApiDocumentCounts {
@@ -33,8 +40,8 @@ export interface ApiDocument {
   mimeType: string
   fileSize: number
   status: DocumentStatus
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface ApiSearchResult {
@@ -58,17 +65,23 @@ export interface ApiDocumentPage {
   pagination: ApiPagination
 }
 
-export interface UploadMetadata {
+export interface DocumentMetadata {
   title: string
   author: string
   category: string
   version: string
+  tags: string[]
+}
+
+export interface UploadMetadata extends Omit<DocumentMetadata, 'tags'> {
   tags: string
 }
+
+export type UpdateDocumentMetadata = Partial<DocumentMetadata>
 
 export interface DocumentStatusEvent {
   id: string
   title: string
   status: DocumentStatus
-  updatedAt: string
+  updatedAt: Date
 }

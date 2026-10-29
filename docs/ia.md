@@ -8,11 +8,11 @@
 - **Google Gemini:** apoyo en contratos de API, DTOs, validaciones, Swagger, documentación y lineamientos de configuración.
 - **GitHub Copilot / Copilot SDK en VS Code:** asistencia en backend, frontend, pruebas, resolución de errores y documentación.
 
-## 2. Arquitectura y diseño definidos por el candidato
+## 2. Arquitectura y diseño definidos por el desarrollador
 
-La arquitectura del backend y del frontend fue definida por el candidato y proporcionada a la IA como referencia. En el backend, las implementaciones debían respetar la separación existente entre módulos, DTOs, controladores, servicios, contratos de repositorio e infraestructura Prisma. En el frontend, se indicó seguir la arquitectura Feature-Based, separando componentes, hooks, servicios, interfaces y utilidades.
+La arquitectura del backend y del frontend fue definida por el desarrollador y proporcionada a la IA como referencia. En el backend, las implementaciones debían respetar la separación existente entre módulos, DTOs, controladores, servicios, contratos de repositorio e infraestructura Prisma. En el frontend, se indicó seguir la arquitectura Feature-Based, separando componentes, hooks, servicios, interfaces y utilidades.
 
-Para orientar el diseño visual, el candidato creó `design.md`, definiendo tokens y lineamientos de estilo. Con Gemini evaluó el sitio de Davivienda como referencia visual para mantener una apariencia coherente con sus estilos. El archivo se utilizó como guía para los cambios de UI, sin delegar a la IA las decisiones de arquitectura.
+Para orientar el diseño visual, el desarrollador creó `design.md`, definiendo tokens y lineamientos de estilo. Con Gemini evaluó el sitio de Davivienda como referencia visual para mantener una apariencia coherente con sus estilos. El archivo se utilizó como guía para los cambios de UI, sin delegar a la IA las decisiones de arquitectura.
 
 También se utilizó **SDD (Specification-Driven Development)** al preparar y refinar algunos prompts: se especificaron el alcance, los requisitos, las restricciones y los criterios esperados antes de solicitar cambios, reduciendo implementaciones fuera de alcance y facilitando su validación.
 
@@ -21,6 +21,7 @@ También se utilizó **SDD (Specification-Driven Development)** al preparar y re
 - **Backend y API:** DTOs y validaciones de carga; endpoints de documentos; búsqueda full-text con PostgreSQL; paginación, conteos, extracción e indexación asíncrona; estados y notificaciones SSE.
 - **Optimización de búsqueda:** análisis del tiempo de respuesta con `EXPLAIN (ANALYZE, BUFFERS)` y mediciones directas de la API. Se identificó que `ts_headline` procesaba documentos OCR de alrededor de cuatro millones de caracteres; se acotó su entrada a una ventana contextual de 3.000 caracteres alrededor de la coincidencia, conservando el ranking, el conteo y el resaltado. La latencia observada para la consulta de ejemplo bajó de aproximadamente 3,2 s a 0,42–0,46 s.
 - **Frontend:** integración con REST y SSE; carga por lotes; filtros y búsqueda; paginación; visor PDF con resaltado; validación de formatos y corrección de estados vacíos y navegación.
+- **Alineación de contratos UI/API:** revisión de wrappers, paginación y tipos por endpoint; fechas `Date` en los modelos con conversión desde el JSON/SSE serializado; estado del documento tipado; `PATCH` limitado a metadatos parciales; y conteos globales sin filtro de búsqueda. Se mantuvieron las respuestas binarias y SSE fuera del wrapper JSON.
 - **Configuración y documentación:** revisión de variables de entorno, Docker, README y documentación de endpoints.
 - **Pruebas y depuración:** apoyo para crear pruebas dirigidas, analizar errores de compilación y lint, y rastrear problemas entre frontend y backend.
 
@@ -34,13 +35,16 @@ Los prompts se ajustaron de forma iterativa según el alcance y la arquitectura 
 - **Frontend:** “Separa los componentes y lleva la lógica reutilizable a hooks, respetando la arquitectura Feature-Based y conectando los endpoints existentes”.
 - **UI y estilo:** se indicó utilizar `design.md` como referencia para tokens y estilos, tomando el sitio de Davivienda evaluado con Gemini como guía visual.
 - **SDD:** en los cambios de mayor alcance se precisaron requisitos, límites, responsabilidades y comportamientos esperados antes de implementar; las observaciones posteriores se usaron para acotar o corregir la solución.
+- **Contratos UI/API:** “Compara los tipos del frontend con los DTOs y respuestas reales del backend; corrige discrepancias de wrapper, paginación, fechas, estados, actualización parcial y conteos, conservando el manejo específico de respuestas binarias y SSE”.
 
 ## 5. Validación humana
 
-El candidato suministro el modelo inicial completo de los servicios en el backend (controlador, servicio, dominio, repositorio, enums y configuracion de ORM - Prisma), revisó las modificaciones contra los requisitos, la arquitectura definida y los patrones existentes. Se inspeccionaron controladores, DTOs, servicios, repositorios, consultas Prisma, hooks, componentes, contratos REST/SSE y documentación. También se verificaron los formatos de archivo, estados de procesamiento, paginación y manejo de resultados.
+El desarrollador suministro el modelo inicial completo de los servicios en el backend (controlador, servicio, dominio, repositorio, enums y configuracion de ORM - Prisma), revisó las modificaciones contra los requisitos, la arquitectura definida y los patrones existentes. Se inspeccionaron controladores, DTOs, servicios, repositorios, consultas Prisma, hooks, componentes, contratos REST/SSE y documentación. También se verificaron los formatos de archivo, estados de procesamiento, paginación y manejo de resultados.
 
 Según cada contribución, se ejecutaron pruebas dirigidas, builds, lint, validación del esquema Prisma y `git diff --check`. Entre las validaciones reportadas, las pruebas de búsqueda/indexación y SSE, las pruebas de documentos y realtime, y los builds/lint de frontend y backend finalizaron correctamente en sus respectivas ejecuciones. Para la optimización se verificaron las pruebas del backend, el build y lint, y se midió la consulta de búsqueda en la base y el endpoint HTTP antes y después del cambio. La respuesta pasó de aproximadamente 3,2 s a 0,42–0,46 s en el entorno local con los documentos de prueba disponibles. Las mediciones dependen del conjunto de datos y del entorno.
 
+En la alineación de contratos se verificaron los builds de frontend y backend, el lint de ambos proyectos y 16 pruebas backend dirigidas a documentos, conteos y repositorio Prisma. También se revisó que el cliente convierta las fechas recibidas como texto ISO a `Date` y que `/file`, `/preview` y SSE sigan usando sus transportes correspondientes.
+
 ## 6. Resultado y responsabilidad
 
-La IA se utilizó como herramienta de apoyo para implementar, revisar, refactorizar y documentar. La definición de la arquitectura del backend y frontend, los lineamientos visuales de `design.md`, la delimitación del alcance y la revisión de los resultados correspondieron al candidato. Las pruebas y limitaciones se reportan según lo efectivamente ejecutado.
+La IA se utilizó como herramienta de apoyo para implementar, revisar, refactorizar y documentar. La definición de la arquitectura del backend y frontend, los lineamientos visuales de `design.md`, la delimitación del alcance, el estado del codigo y la revisión de los resultados correspondieron al desarrollador.

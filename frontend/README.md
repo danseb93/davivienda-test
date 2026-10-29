@@ -92,7 +92,7 @@ VITE_UPLOAD_CONCURRENCY=5
 
 La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
 
-El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos por estado se consultan aparte con `GET /api/v1/documents/count` (opcionalmente con `search`), en el wrapper estándar de respuesta.
+El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos globales por estado se consultan aparte con `GET /api/v1/documents/count`, en el wrapper estándar de respuesta.
 
 La interfaz escucha cambios de indexación en una sola conexión a `GET /api/v1/realtime/documents`, evitando abrir una conexión SSE independiente por cada archivo cargado.
 
