@@ -10,7 +10,7 @@ export interface DocumentItem {
   version: string
   tags: string[]
   size: number
-  uploadedAt: string
+  uploadedAt: Date
   status: DocumentStatus
 }
 

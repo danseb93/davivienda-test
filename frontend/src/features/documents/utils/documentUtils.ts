@@ -16,12 +16,16 @@ export function mapApiDocument(document: ApiDocument): DocumentItem {
     version: document.version,
     tags: document.tags,
     size: document.fileSize,
-    uploadedAt: new Intl.DateTimeFormat('es-CO', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(document.updatedAt)),
+    uploadedAt: document.updatedAt,
     status: document.status,
   }
+}
+
+export function formatDate(date: Date) {
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 export function formatFileSize(bytes: number) {

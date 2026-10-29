@@ -1,4 +1,6 @@
-export type DocumentStatus = 'PROCESSING' | 'INDEXED' | 'ERROR';
+import type { DocumentStatus } from '../../../common/enums/document-status.enum.js';
+
+export type { DocumentStatus } from '../../../common/enums/document-status.enum.js';
 
 export class Document {
   id!: string;

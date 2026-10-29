@@ -1,6 +1,6 @@
 import type { DocumentItem } from '../interfaces/document.interface'
 import type { DocumentFilter } from '../types/document.type'
-import { formatFileSize } from '../utils/documentUtils'
+import { formatDate, formatFileSize } from '../utils/documentUtils'
 import { Icon } from './Icon'
 import { SearchResultsPanel } from './SearchResultsPanel'
 import { StatusBadge } from './StatusBadge'
@@ -135,7 +135,7 @@ function DocumentRows({ documents, onOpen, onEdit, onDelete }: Pick<DocumentTabl
               </td>
               <td className="px-5 py-4"><span className="text-sm text-[#555]">{document.category}</span><p className="mt-1 text-xs text-[#999]">{document.author}</p></td>
               <td className="px-5 py-4 text-sm text-[#666]">{formatFileSize(document.size)}</td>
-              <td className="px-5 py-4 text-xs text-[#707070]">{document.uploadedAt}</td>
+              <td className="px-5 py-4 text-xs text-[#707070]">{formatDate(document.uploadedAt)}</td>
               <td className="px-5 py-4"><StatusBadge status={document.status} /></td>
               <td className="px-5 py-4">
                 <div className="flex justify-end gap-1">

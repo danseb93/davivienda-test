@@ -127,7 +127,7 @@ describe('PrismaDocumentRepository processing queue', () => {
       });
     });
 
-    it('counts documents by status independently of paginated results', async () => {
+    it('counts all documents by status independently of paginated results', async () => {
       const groupBy = vi.fn().mockResolvedValue([
         { status: 'INDEXED', _count: { _all: 8 } },
         { status: 'PROCESSING', _count: { _all: 2 } },
@@ -137,7 +137,7 @@ describe('PrismaDocumentRepository processing queue', () => {
         document: { groupBy },
       } as unknown as PrismaService);
 
-      await expect(repository.findCounts('manual')).resolves.toEqual({
+      await expect(repository.findCounts()).resolves.toEqual({
         total: 11,
         indexed: 8,
         processing: 2,
@@ -145,15 +145,6 @@ describe('PrismaDocumentRepository processing queue', () => {
       });
       expect(groupBy).toHaveBeenCalledWith({
         by: ['status'],
-        where: {
-          OR: [
-            { title: { contains: 'manual', mode: 'insensitive' } },
-            { author: { contains: 'manual', mode: 'insensitive' } },
-            { category: { contains: 'manual', mode: 'insensitive' } },
-            { version: { contains: 'manual', mode: 'insensitive' } },
-            { tags: { has: 'manual' } },
-          ],
-        },
         _count: { _all: true },
       });
     });

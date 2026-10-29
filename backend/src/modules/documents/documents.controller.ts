@@ -27,7 +27,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   CreateDocumentDto,
-  DocumentCountQueryDto,
   DocumentCountsResponseDto,
   DeleteDocumentResponseDto,
   DocumentQueryDto,
@@ -71,10 +70,8 @@ export class DocumentsController {
   @Get('count')
   @ApiOperation({ summary: 'Get document counts by processing status' })
   @ApiOkResponse({ type: DocumentCountsResponseDto })
-  async findCounts(
-    @Query() query: DocumentCountQueryDto,
-  ): Promise<DocumentCountsResponseDto> {
-    const data = await this.documentFinder.findCounts(query.search);
+  async findCounts(): Promise<DocumentCountsResponseDto> {
+    const data = await this.documentFinder.findCounts();
     return {
       statusCode: HttpStatus.OK,
       success: true,

@@ -28,21 +28,20 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 ```text
 src/
-├── app/                               # Configuración global (Router, Providers, Store)
-├── components/                        # Componentes UI globales o genéricos
+├── App.css                            # Estilos de la aplicación
+├── App.tsx                            # Componente raíz
 ├── features/
 │   └── documents/
-│       ├── components/                # Componentes de documentos
+│       ├── components/                # Componentes de documentos y búsqueda
+│       ├── config/                    # Configuración del feature
 │       ├── data/                      # Categorías y datos estáticos
 │       ├── hooks/                     # Estado y lógica del feature
-│       ├── interfaces/                # Interfaces de documentos
+│       ├── interfaces/                # Interfaces de la API y documentos
 │       ├── screens/                   # Pantallas del feature
 │       ├── services/                  # Cliente REST y SSE
 │       ├── types/                     # Tipos compartidos del feature
-│       └── utils/                     # Utilidades del feature
-├── hooks/                             # Hooks globales reutilizables
-├── services/                          # Clientes HTTP globales (Axios, Fetch)
-└── utils/                             # Utilidades y funciones de ayuda
+│       └── utils/                     # Utilidades y búsqueda
+└── main.tsx                           # Punto de entrada de React
 ```
 
 ---
@@ -91,9 +90,9 @@ VITE_UPLOAD_CONCURRENCY=5
 
 > Este valor es solo para desarrollo. Si cambias el puerto del backend, actualízalo aquí.
 
-El backend debe permitir el origen del frontend en `CORS_ORIGIN` (por defecto `http://localhost:5173,http://127.0.0.1:5173`). La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
+La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
 
-El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos por estado se consultan aparte con `GET /api/v1/documents/count` (opcionalmente con `search`), en el wrapper estándar de respuesta.
+El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos globales por estado se consultan aparte con `GET /api/v1/documents/count`, en el wrapper estándar de respuesta.
 
 La interfaz escucha cambios de indexación en una sola conexión a `GET /api/v1/realtime/documents`, evitando abrir una conexión SSE independiente por cada archivo cargado.
 
@@ -105,10 +104,10 @@ Al ejecutar el frontend con Docker Compose, el contenedor sincroniza las depende
 - Al pulsar **Buscar contenido** o presionar Enter se consulta `GET /api/v1/search`. Los documentos aún no indexados no aparecen en sus resultados.
 - Mientras se consulta el índice se muestra **Búsqueda avanzada en curso**; el mensaje de que no hubo coincidencias solo aparece cuando la búsqueda termina y la API devuelve cero resultados.
 - Los resultados full-text aparecen dentro de la tarjeta **Todos los documentos**, encima de la tabla de la biblioteca.
-- Al abrir un documento de la biblioteca o un resultado, el panel lateral consulta sus metadatos y el archivo original con `GET /api/v1/documents/:id` y `GET /api/v1/documents/:id/file`. PDF.js renderiza el binario PDF original y dibuja una capa de texto que resalta cada término; los controles permiten navegar por las páginas del PDF y, por separado, por las páginas coincidentes. TXT y Markdown se resaltan directamente.
+- Al abrir un documento de la biblioteca o un resultado, el panel lateral consulta sus metadatos y el archivo original con `GET /api/v1/documents/:id` y `GET /api/v1/documents/:id/file`. El original se conserva para el botón **Descargar original** y para mostrar TXT/Markdown. Para PDF también consulta `GET /api/v1/documents/:id/preview`, que devuelve la copia OCR cuando está lista o el original mientras tanto; PDF.js renderiza ese PDF y resalta los términos, con controles para navegar por las páginas y coincidencias.
 - La carga acepta el máximo indicado en `VITE_MAX_DOCUMENTS_PER_BATCH` por lote y 25 MB por archivo. Una carga confirmada aparece como **Cargado; indexando** mientras espera el SSE terminal; ese procesamiento no bloquea las siguientes cargas. El formulario del lote usa un título derivado del nombre de cada archivo y aplica autor, categoría, versión y etiquetas comunes a los documentos seleccionados.
 
-El endpoint del archivo original es una ruta añadida al backend para el visor; no incluye el texto extraído en la respuesta de metadatos.
+El endpoint `/file` siempre entrega el original, mientras `/preview` prioriza la copia OCR para mostrar PDF. Aunque `/preview` también puede devolver el original, ambas rutas cumplen funciones distintas: conservar la descarga fuente y servir la vista previa buscable.
 
 ### 4. Ejecución en modo desarrollo
 

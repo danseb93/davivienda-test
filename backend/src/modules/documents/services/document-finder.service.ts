@@ -46,8 +46,8 @@ export class DocumentFinderService {
     };
   }
 
-  findCounts(search?: string): Promise<DocumentCounts> {
-    return this.documentRepository.findCounts(search?.trim() || undefined);
+  findCounts(): Promise<DocumentCounts> {
+    return this.documentRepository.findCounts();
   }
 
   async findById(id: string): Promise<Document> {

@@ -44,7 +44,7 @@ export interface DocumentRepository {
     query: Pagination,
     status?: Document['status'],
   ): Promise<PaginatedDocuments>;
-  findCounts(search?: string): Promise<DocumentCounts>;
+  findCounts(): Promise<DocumentCounts>;
   findById(id: string): Promise<Document | null>;
   create(data: CreateDocumentData): Promise<Document>;
   update(id: string, data: UpdateDocumentData): Promise<Document>;
