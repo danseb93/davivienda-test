@@ -10,7 +10,7 @@ export class PrismaRealtimeRepository implements RealtimeRepository {
   findDocumentStatus(id: string): Promise<DocumentStatusEvent | null> {
     return this.prisma.document.findUnique({
       where: { id },
-      select: { id: true, status: true, updatedAt: true },
+      select: { id: true, title: true, status: true, updatedAt: true },
     });
   }
 }

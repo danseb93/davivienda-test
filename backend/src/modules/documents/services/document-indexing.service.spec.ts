@@ -36,6 +36,7 @@ describe('DocumentIndexingService', () => {
         expect(await extractContent(document)).toBe('Document contents');
         return {
           id: document.id,
+          title: document.title,
           status: 'INDEXED' as const,
           updatedAt: new Date(),
         };
@@ -43,6 +44,7 @@ describe('DocumentIndexingService', () => {
     );
     const repository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),

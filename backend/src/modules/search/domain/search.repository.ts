@@ -1,7 +1,8 @@
-export interface SearchDocumentsQuery {
+import type { Pagination } from '../../../common/domain/pagination.entity.js';
+
+export interface SearchDocumentsQuery
+  extends Pick<Pagination, 'page' | 'limit'> {
   term: string;
-  limit: number;
-  offset: number;
 }
 
 export interface SearchDocumentResult {

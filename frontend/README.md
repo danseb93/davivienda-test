@@ -8,9 +8,9 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 - **Biblioteca conectada al backend:** consulta documentos, filtra sus metadatos localmente y administra sus metadatos o eliminación mediante la API REST.
 - **Búsqueda full-text:** al enviar la consulta, busca dentro de contenido indexado con ranking, paginación y fragmentos resaltados por el backend.
-- **Carga por lotes:** admite hasta 20 archivos por selección. Cada uno se envía en su propia petición multipart; hasta tres cargas ocurren en paralelo y cada documento tiene su propio estado SSE.
+- **Carga por lotes:** admite hasta el máximo configurado en `VITE_MAX_DOCUMENTS_PER_BATCH` por selección. Cada uno se envía en su propia petición multipart; el número máximo de cargas simultáneas se configura con `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Cada cupo se libera cuando la API confirma la carga (`201`), sin esperar la indexación en segundo plano, que se sigue por SSE.
 - **Vista previa del original:** un panel lateral abre documentos desde la biblioteca o los resultados. PDF.js renderiza el PDF original y resalta las coincidencias sobre una capa de texto; TXT y Markdown también resaltan los términos de búsqueda.
-- **Actualizaciones en tiempo real:** SSE actualiza estados y notifica cuando cada documento termina como `INDEXED` o `ERROR`; al abrir o recargar la biblioteca también se suscribe a los documentos que siguen en `PROCESSING`.
+- **Actualizaciones en tiempo real:** una única conexión SSE compartida actualiza estados y notifica cuando cada documento termina como `INDEXED` o `ERROR`.
 
 ---
 
@@ -79,15 +79,23 @@ Contenido de `.env.example`:
 
 ```env
 VITE_API_URL=http://localhost:3000
+VITE_MAX_DOCUMENTS_PER_BATCH=20
+VITE_UPLOAD_CONCURRENCY=5
 ```
 
 | Variable | Descripción |
 | --- | --- |
 | `VITE_API_URL` | URL base de la API. El canal de eventos SSE se consume desde esta misma URL, por lo que no hace falta una variable aparte |
+| `VITE_MAX_DOCUMENTS_PER_BATCH` | Máximo de archivos permitidos por carga por lotes. Debe ser un entero positivo |
+| `VITE_UPLOAD_CONCURRENCY` | Máximo de archivos enviados simultáneamente. Debe ser un entero positivo; por defecto es `5` |
 
 > Este valor es solo para desarrollo. Si cambias el puerto del backend, actualízalo aquí.
 
-El backend debe permitir el origen del frontend en `CORS_ORIGIN` (por defecto `http://localhost:5173,http://127.0.0.1:5173`). La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, con concurrencia máxima de tres.
+El backend debe permitir el origen del frontend en `CORS_ORIGIN` (por defecto `http://localhost:5173,http://127.0.0.1:5173`). La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
+
+El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos por estado se consultan aparte con `GET /api/v1/documents/count` (opcionalmente con `search`), en el wrapper estándar de respuesta.
+
+La interfaz escucha cambios de indexación en una sola conexión a `GET /api/v1/realtime/documents`, evitando abrir una conexión SSE independiente por cada archivo cargado.
 
 Al ejecutar el frontend con Docker Compose, el contenedor sincroniza las dependencias con `package-lock.json` al arrancar. Esto permite que el volumen de `node_modules` incluya paquetes agregados después de haber creado el contenedor.
 
@@ -98,7 +106,7 @@ Al ejecutar el frontend con Docker Compose, el contenedor sincroniza las depende
 - Mientras se consulta el índice se muestra **Búsqueda avanzada en curso**; el mensaje de que no hubo coincidencias solo aparece cuando la búsqueda termina y la API devuelve cero resultados.
 - Los resultados full-text aparecen dentro de la tarjeta **Todos los documentos**, encima de la tabla de la biblioteca.
 - Al abrir un documento de la biblioteca o un resultado, el panel lateral consulta sus metadatos y el archivo original con `GET /api/v1/documents/:id` y `GET /api/v1/documents/:id/file`. PDF.js renderiza el binario PDF original y dibuja una capa de texto que resalta cada término; los controles permiten navegar por las páginas del PDF y, por separado, por las páginas coincidentes. TXT y Markdown se resaltan directamente.
-- La carga acepta un máximo de 20 archivos por lote y 25 MB por archivo. El formulario del lote usa un título derivado del nombre de cada archivo y aplica autor, categoría, versión y etiquetas comunes a los documentos seleccionados.
+- La carga acepta el máximo indicado en `VITE_MAX_DOCUMENTS_PER_BATCH` por lote y 25 MB por archivo. Una carga confirmada aparece como **Cargado; indexando** mientras espera el SSE terminal; ese procesamiento no bloquea las siguientes cargas. El formulario del lote usa un título derivado del nombre de cada archivo y aplica autor, categoría, versión y etiquetas comunes a los documentos seleccionados.
 
 El endpoint del archivo original es una ruta añadida al backend para el visor; no incluye el texto extraído en la respuesta de metadatos.
 

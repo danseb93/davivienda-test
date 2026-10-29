@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Res,
   StreamableFile,
   UploadedFile,
@@ -26,7 +27,10 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   CreateDocumentDto,
+  DocumentCountQueryDto,
+  DocumentCountsResponseDto,
   DeleteDocumentResponseDto,
+  DocumentQueryDto,
   DocumentResponseDto,
   DocumentsResponseDto,
   UpdateDocumentDto,
@@ -51,16 +55,31 @@ export class DocumentsController {
   @Get()
   @ApiOperation({ summary: 'List all documents and their metadata' })
   @ApiOkResponse({ type: DocumentsResponseDto })
-  async findAll(): Promise<DocumentsResponseDto> {
-    const documents = await this.documentFinder.findAll();
+  async findAll(
+    @Query() query: DocumentQueryDto,
+  ): Promise<DocumentsResponseDto> {
+    const result = await this.documentFinder.findAll(query);
     return {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Documents retrieved successfully',
-      data: documents.map(
-        ({ storageName: _storageName, content: _content, ...document }) =>
-          document,
-      ),
+      data: result.documents,
+      pagination: result.pagination,
+    };
+  }
+
+  @Get('count')
+  @ApiOperation({ summary: 'Get document counts by processing status' })
+  @ApiOkResponse({ type: DocumentCountsResponseDto })
+  async findCounts(
+    @Query() query: DocumentCountQueryDto,
+  ): Promise<DocumentCountsResponseDto> {
+    const data = await this.documentFinder.findCounts(query.search);
+    return {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Document counts retrieved successfully',
+      data,
     };
   }
 

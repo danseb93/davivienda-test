@@ -16,6 +16,15 @@ export class RealtimeController {
     private readonly realtimeEvents: RealtimeEventService,
   ) {}
 
+  @Sse('documents')
+  @ApiOperation({
+    summary: 'Subscribe to processing status updates for all documents',
+  })
+  @ApiProduces('text/event-stream')
+  streamDocuments(): Observable<MessageEvent> {
+    return this.realtimeEvents.streamDocuments();
+  }
+
   @Sse('documents/:id')
   @ApiOperation({
     summary: 'Subscribe to document processing status updates',

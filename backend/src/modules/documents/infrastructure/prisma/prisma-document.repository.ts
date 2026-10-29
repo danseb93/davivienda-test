@@ -8,13 +8,90 @@ import {
   UpdateDocumentData,
 } from '../../domain/document.repository.js';
 import { Document } from '../../domain/document.entity.js';
+import type { Pagination } from '../../../../common/domain/pagination.entity.js';
+import type {
+  DocumentCounts,
+  PaginatedDocuments,
+} from '../../domain/document.repository.js';
+
+function createSearchConditions(search?: string): Prisma.DocumentWhereInput {
+  return search
+    ? {
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { author: { contains: search, mode: 'insensitive' } },
+          { category: { contains: search, mode: 'insensitive' } },
+          { version: { contains: search, mode: 'insensitive' } },
+          { tags: { has: search } },
+        ],
+      }
+    : {};
+}
 
 @Injectable()
 export class PrismaDocumentRepository implements DocumentRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(): Promise<Document[]> {
-    return this.prisma.document.findMany({ orderBy: { createdAt: 'desc' } });
+  async findAll(
+    query: Pagination,
+    status?: Document['status'],
+  ): Promise<PaginatedDocuments> {
+    const searchConditions = createSearchConditions(query.search);
+    const where: Prisma.DocumentWhereInput = {
+      ...searchConditions,
+      ...(status ? { status } : {}),
+    };
+    const orderBy: Prisma.DocumentOrderByWithRelationInput = {
+      [query.sort]: query.order,
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          category: true,
+          tags: true,
+          version: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      this.prisma.document.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  async findCounts(search?: string): Promise<DocumentCounts> {
+    const statusCounts = await this.prisma.document.groupBy({
+      by: ['status'],
+      where: createSearchConditions(search),
+      _count: { _all: true },
+    });
+    const counts: DocumentCounts = {
+      total: 0,
+      indexed: 0,
+      processing: 0,
+      error: 0,
+    };
+    for (const entry of statusCounts) {
+      const count = entry._count._all;
+      counts.total += count;
+      if (entry.status === 'INDEXED') counts.indexed = count;
+      if (entry.status === 'PROCESSING') counts.processing = count;
+      if (entry.status === 'ERROR') counts.error = count;
+    }
+
+    return counts;
   }
 
   findById(id: string): Promise<Document | null> {
@@ -67,6 +144,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
           });
           return {
             id: failed.id,
+            title: failed.title,
             status: 'ERROR',
             updatedAt: failed.updatedAt,
             error,
@@ -79,6 +157,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
         });
         return {
           id: indexed.id,
+          title: indexed.title,
           status: 'INDEXED',
           updatedAt: indexed.updatedAt,
         };

@@ -26,6 +26,7 @@ describe('document services', () => {
     const create = vi.fn().mockResolvedValue(document);
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn(),
       create,
       update: vi.fn(),
@@ -64,6 +65,7 @@ describe('document services', () => {
   it('requires a file for document creation', async () => {
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -82,6 +84,7 @@ describe('document services', () => {
   it('rejects empty metadata updates', async () => {
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn().mockResolvedValue(document),
       create: vi.fn(),
       update: vi.fn(),
@@ -98,6 +101,7 @@ describe('document services', () => {
   it('returns not found when updating a missing document', async () => {
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
       update: vi.fn(),
@@ -115,6 +119,7 @@ describe('document services', () => {
     const findById = vi.fn().mockResolvedValue(document);
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById,
       create: vi.fn(),
       update: vi.fn(),
@@ -127,9 +132,67 @@ describe('document services', () => {
     expect(findById).toHaveBeenCalledWith(document.id);
   });
 
+  it('finds a page of documents and computes pagination metadata', async () => {
+    const findAll = vi.fn().mockResolvedValue({
+      items: [document],
+      total: 21,
+    });
+    const repository: DocumentRepository = {
+      findAll,
+      findCounts: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      processNextPending: vi.fn(),
+    };
+    const service = new DocumentFinderService(repository);
+
+    await expect(
+      service.findAll({ page: 3, limit: 10, search: 'manual' }),
+    ).resolves.toEqual({
+      documents: [document],
+      pagination: {
+        page: 3,
+        limit: 10,
+        total: 21,
+        totalPages: 3,
+      },
+    });
+    expect(findAll).toHaveBeenCalledWith(
+      {
+        page: 3,
+        limit: 10,
+        search: 'manual',
+        sort: 'createdAt',
+        order: 'desc',
+      },
+      undefined,
+    );
+  });
+
+  it('finds document counts independently of the paginated list', async () => {
+    const counts = { total: 25, indexed: 20, processing: 3, error: 2 };
+    const findCounts = vi.fn().mockResolvedValue(counts);
+    const repository: DocumentRepository = {
+      findAll: vi.fn(),
+      findCounts,
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      processNextPending: vi.fn(),
+    };
+    const service = new DocumentFinderService(repository);
+
+    await expect(service.findCounts(' manual ')).resolves.toEqual(counts);
+    expect(findCounts).toHaveBeenCalledWith('manual');
+  });
+
   it('returns not found when looking up a missing document', async () => {
     const repository: DocumentRepository = {
       findAll: vi.fn(),
+      findCounts: vi.fn(),
       findById: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
       update: vi.fn(),

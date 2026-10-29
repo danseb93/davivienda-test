@@ -23,22 +23,24 @@ describe('DocumentSearchService', () => {
     const service = new DocumentSearchService(repository);
 
     await expect(
-      service.search({ q: ' motor ', page: 2, pageSize: 1 }),
+      service.search({ q: ' motor ', page: 2, limit: 1 }),
     ).resolves.toEqual({
       items: [
         expect.objectContaining({
           snippet: 'Guide &lt;script&gt; MOTOR <mark>engine</mark>',
         }),
       ],
-      total: 3,
-      page: 2,
-      pageSize: 1,
-      totalPages: 3,
+      pagination: {
+        page: 2,
+        limit: 1,
+        total: 3,
+        totalPages: 3,
+      },
     });
     expect(search).toHaveBeenCalledWith({
       term: 'motor',
+      page: 2,
       limit: 1,
-      offset: 1,
     });
   });
 

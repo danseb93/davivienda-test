@@ -25,6 +25,17 @@ export class RealtimeEventService {
     return this.events.pipe(filter((event) => event.id === id));
   }
 
+  streamDocuments(): Observable<MessageEvent> {
+    const updates = this.events.pipe(
+      map((data) => ({ type: 'document.status', data })),
+    );
+    const heartbeat = interval(15_000).pipe(
+      map(() => ({ type: 'heartbeat', data: '' })),
+    );
+
+    return merge(updates, heartbeat);
+  }
+
   streamDocument(id: string): Observable<MessageEvent> {
     const currentStatus = defer(async () => {
       const document = await this.realtimeRepository.findDocumentStatus(id);

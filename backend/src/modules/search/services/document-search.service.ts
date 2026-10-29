@@ -38,10 +38,12 @@ export class DocumentSearchService {
 
   async search(query: SearchQueryDto): Promise<{
     items: SearchResultDto[];
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
   }> {
     const searchTerm = query.q.trim();
     if (!searchTerm) {
@@ -49,21 +51,23 @@ export class DocumentSearchService {
     }
 
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
+    const limit = query.limit ?? 10;
     const { items, total } = await this.searchRepository.search({
       term: searchTerm,
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
+      page,
+      limit,
     });
     return {
       items: items.map((row) => ({
         ...row,
         snippet: formatSnippet(row.snippet),
       })),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 }

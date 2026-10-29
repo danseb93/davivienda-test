@@ -1,5 +1,8 @@
 import type {
   ApiDocument,
+  ApiDocumentCounts,
+  ApiDocumentPage,
+  ApiPagination,
   ApiResponse,
   ApiSearchPage,
   DocumentStatusEvent,
@@ -27,8 +30,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export async function listDocuments() {
-  const response = await request<ApiResponse<ApiDocument[]>>('/documents')
+export async function listDocuments(query: {
+  page: number
+  limit: number
+  search?: string
+  status?: string
+}): Promise<ApiDocumentPage> {
+  const params = new URLSearchParams({
+    page: String(query.page),
+    limit: String(query.limit),
+  })
+  if (query.search) params.set('search', query.search)
+  if (query.status) params.set('status', query.status)
+  const response = await request<
+    ApiResponse<ApiDocument[]> & {
+      pagination: ApiPagination
+    }
+  >(`/documents?${params}`)
+  return { items: response.data, pagination: response.pagination }
+}
+
+export async function countDocuments(): Promise<ApiDocumentCounts> {
+  const response = await request<ApiResponse<ApiDocumentCounts>>('/documents/count')
   return response.data
 }
 
@@ -50,10 +73,12 @@ export async function deleteDocument(id: string) {
   await request<ApiResponse<null>>(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export async function searchDocuments(query: string, page = 1, pageSize = 20) {
-  const params = new URLSearchParams({ q: query, page: String(page), pageSize: String(pageSize) })
-  const response = await request<ApiResponse<ApiSearchPage>>(`/search?${params}`)
-  return response.data
+export async function searchDocuments(query: string, page = 1, limit = 10) {
+  const params = new URLSearchParams({ q: query, page: String(page), limit: String(limit) })
+  const response = await request<
+    ApiResponse<ApiSearchPage['items']> & { pagination: ApiPagination }
+  >(`/search?${params}`)
+  return { items: response.data, pagination: response.pagination }
 }
 
 export function uploadDocument(file: File, metadata: UploadMetadata, onProgress: (progress: number) => void) {
@@ -105,12 +130,11 @@ export async function getOriginalFile(id: string, signal?: AbortSignal) {
   }
 }
 
-export function subscribeToDocument(
-  id: string,
+export function subscribeToDocuments(
   onStatus: (event: DocumentStatusEvent) => void,
   onError: () => void,
 ) {
-  const source = new EventSource(`${apiUrl}/realtime/documents/${encodeURIComponent(id)}`)
+  const source = new EventSource(`${apiUrl}/realtime/documents`)
   source.addEventListener('document.status', (event) => {
     try {
       onStatus(JSON.parse((event as MessageEvent<string>).data) as DocumentStatusEvent)

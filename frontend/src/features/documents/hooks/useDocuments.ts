@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DocumentForm, DocumentItem, UploadItem } from '../interfaces/document.interface'
 import type { DocumentFilter, ToastKind } from '../types/document.type'
-import type { UploadMetadata } from '../interfaces/api.interface'
+import type { DocumentStatusEvent, UploadMetadata } from '../interfaces/api.interface'
+import { maxBatchFiles, uploadConcurrency } from '../config/documentConfig'
 import {
+  countDocuments,
   deleteDocument as deleteDocumentRequest,
   listDocuments,
-  subscribeToDocument,
+  subscribeToDocuments,
   updateDocument as updateDocumentRequest,
   uploadDocument,
 } from '../services/documentApi'
@@ -13,85 +15,188 @@ import { createId, getTitle, isSupportedFile, mapApiDocument } from '../utils/do
 
 type Notify = (kind: ToastKind, title: string, message: string) => void
 
-const maxBatchFiles = 20
 const maxFileSize = 25 * 1024 * 1024
-const uploadConcurrency = 3
+const documentPageSize = 10
 
 export function useDocuments(notify: Notify) {
   const [documents, setDocuments] = useState<DocumentItem[]>([])
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [query, setQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState<DocumentFilter>('ALL')
+  const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: documentPageSize,
+    total: 0,
+    totalPages: 0,
+  })
+  const [counts, setCounts] = useState({
+    total: 0,
+    indexed: 0,
+    processing: 0,
+    error: 0,
+  })
+  const [reloadVersion, setReloadVersion] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(null)
   const [deletingDocument, setDeletingDocument] = useState<DocumentItem | null>(null)
-  const streams = useRef(new Map<string, EventSource>())
-  const reportedStreamErrors = useRef(new Set<string>())
+  const documentTitles = useRef(new Map<string, string>())
+  const pendingStatusEvents = useRef(new Map<string, DocumentStatusEvent>())
+  const countRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countRequestVersion = useRef(0)
+  const currentNotify = useRef(notify)
+
+  useEffect(() => {
+    currentNotify.current = notify
+  }, [notify])
+
+  const reloadDocuments = useCallback(() => {
+    setIsLoading(true)
+    if (reloadTimer.current) clearTimeout(reloadTimer.current)
+    reloadTimer.current = setTimeout(() => {
+      reloadTimer.current = null
+      setReloadVersion((current) => current + 1)
+    }, 250)
+  }, [])
+
+  const refreshCounts = useCallback(() => {
+    if (countRefreshTimer.current) return
+    countRefreshTimer.current = setTimeout(() => {
+      countRefreshTimer.current = null
+      const requestVersion = ++countRequestVersion.current
+      void countDocuments()
+        .then((result) => {
+          if (requestVersion === countRequestVersion.current) setCounts(result)
+        })
+        .catch((error: unknown) => {
+          if (requestVersion === countRequestVersion.current) {
+            currentNotify.current('error', 'No se pudieron cargar los conteos', getMessage(error))
+          }
+        })
+    }, 250)
+  }, [])
 
   useEffect(() => {
     let active = true
-    const activeStreams = streams.current
-
-    void listDocuments()
-      .then((items) => {
-        if (active) setDocuments(items.map(mapApiDocument))
+    const timer = setTimeout(() => {
+      void listDocuments({
+        page,
+        limit: documentPageSize,
+        search: query.trim() || undefined,
+        status: activeFilter === 'ALL' ? undefined : activeFilter,
       })
-      .catch((error: unknown) => {
-        if (!active) return
-        setDocuments([])
-        notify('error', 'No se pudieron cargar los documentos', getMessage(error))
-      })
-      .finally(() => {
-        if (active) setIsLoading(false)
-      })
+        .then((result) => {
+          if (!active) return
+          setDocuments(result.items.map(mapApiDocument))
+          setPagination(result.pagination)
+        })
+        .catch((error: unknown) => {
+          if (!active) return
+          setDocuments([])
+          setPagination({ page, limit: documentPageSize, total: 0, totalPages: 0 })
+          notify('error', 'No se pudieron cargar los documentos', getMessage(error))
+        })
+        .finally(() => {
+          if (active) setIsLoading(false)
+        })
+    }, 250)
 
     return () => {
       active = false
-      activeStreams.forEach((source) => source.close())
-      activeStreams.clear()
+      clearTimeout(timer)
     }
-  }, [notify])
-
-  const trackProcessing = useCallback((document: DocumentItem) => {
-    const source = subscribeToDocument(
-      document.id,
-      (event) => {
-        if (event.status === 'PROCESSING') return
-        setDocuments((current) => current.map((item) =>
-          item.id === event.id ? { ...item, status: event.status, uploadedAt: formatDate(event.updatedAt) } : item,
-        ))
-        setUploads((current) => current.map((upload) =>
-          upload.id === event.id ? { ...upload, stage: event.status === 'INDEXED' ? 'done' : 'error', progress: 100 } : upload,
-        ))
-        if (event.status === 'INDEXED') {
-          notify('success', 'Documento indexado', `${document.title} ya está disponible para búsqueda.`)
-        } else {
-          notify('error', 'Falló la indexación', `${document.title} se cargó, pero el backend no pudo procesarlo.`)
-        }
-        source.close()
-        streams.current.delete(event.id)
-        reportedStreamErrors.current.delete(event.id)
-      },
-      () => {
-        if (reportedStreamErrors.current.has(document.id)) return
-        reportedStreamErrors.current.add(document.id)
-        notify('info', 'Reconectando con el procesamiento', `Se perdió temporalmente la conexión de ${document.title}. El navegador intentará reconectarse.`)
-      },
-    )
-    streams.current.set(document.id, source)
-  }, [notify])
+  }, [activeFilter, notify, page, query, reloadVersion])
 
   useEffect(() => {
-    documents.forEach((document) => {
-      if (document.status === 'PROCESSING' && !streams.current.has(document.id)) {
-        trackProcessing(document)
+    refreshCounts()
+  }, [refreshCounts])
+
+  useEffect(() => () => {
+    if (countRefreshTimer.current) {
+      clearTimeout(countRefreshTimer.current)
+      countRefreshTimer.current = null
+    }
+    if (reloadTimer.current) {
+      clearTimeout(reloadTimer.current)
+      reloadTimer.current = null
+    }
+  }, [])
+
+  const changeQuery = useCallback((value: string) => {
+    if (value === query) return
+    setIsLoading(true)
+    setQuery(value)
+    setPage(1)
+  }, [query])
+
+  const changeFilter = useCallback((filter: DocumentFilter) => {
+    if (filter === activeFilter && page === 1) return
+    setIsLoading(true)
+    setActiveFilter(filter)
+    setPage(1)
+  }, [activeFilter, page])
+
+  const changePage = useCallback((nextPage: number) => {
+    if (nextPage === page) return
+    setIsLoading(true)
+    setPage(nextPage)
+  }, [page])
+
+  useEffect(() => {
+    let active = true
+    let reportedStreamError = false
+    const source = subscribeToDocuments(
+      (event) => {
+        if (!active || event.status === 'PROCESSING') return
+        reportedStreamError = false
+        setDocuments((current) => current.map((document) =>
+          document.id === event.id
+            ? { ...document, status: event.status, uploadedAt: formatDate(event.updatedAt) }
+            : document,
+        ))
+        setUploads((current) => current.map((upload) =>
+          upload.id === event.id
+            ? { ...upload, stage: event.status === 'INDEXED' ? 'done' : 'error', progress: 100 }
+            : upload,
+        ))
+        const title = event.title || documentTitles.current.get(event.id)
+        if (title) {
+          if (event.status === 'INDEXED') {
+            notify('success', 'Documento indexado', `${title} ya está disponible para búsqueda.`)
+          } else {
+            notify('error', 'Falló la indexación', `${title} se cargó, pero el backend no pudo procesarlo.`)
+          }
+        }
+        if (!documentTitles.current.has(event.id)) {
+          pendingStatusEvents.current.set(event.id, event)
+          if (pendingStatusEvents.current.size > maxBatchFiles) {
+            const oldestId = pendingStatusEvents.current.keys().next().value
+            if (oldestId) pendingStatusEvents.current.delete(oldestId)
+          }
+        }
+        refreshCounts()
+        reloadDocuments()
+      },
+      () => {
+        if (!active || reportedStreamError) return
+        reportedStreamError = true
+        notify('info', 'Reconectando con el procesamiento', 'Se perdió temporalmente la conexión de eventos. El navegador intentará reconectarse.')
       }
-    })
-  }, [documents, trackProcessing])
+    )
+    return () => {
+      active = false
+      source.close()
+    }
+  }, [notify, refreshCounts, reloadDocuments])
 
   const uploadFiles = useCallback(async (files: File[], metadata: Omit<UploadMetadata, 'title'>) => {
     if (files.length > maxBatchFiles) {
-      notify('error', 'Máximo 20 documentos', 'Divide la selección en lotes de hasta 20 archivos.')
+      notify(
+        'error',
+        `Máximo ${maxBatchFiles} documentos`,
+        `Divide la selección en lotes de hasta ${maxBatchFiles} archivos.`,
+      )
       return
     }
 
@@ -141,13 +246,30 @@ export function useDocuments(notify: Notify) {
               upload.id === localId ? { ...upload, progress } : upload,
             )),
           ))
-          setDocuments((current) => [created, ...current.filter((item) => item.id !== created.id)])
+          documentTitles.current.set(created.id, created.title)
+          const earlyStatus = pendingStatusEvents.current.get(created.id)
+          pendingStatusEvents.current.delete(created.id)
           setUploads((current) => current.map((upload) =>
             upload.id === localId
-              ? { ...upload, id: created.id, progress: 100, stage: 'processing' }
+              ? {
+                  ...upload,
+                  id: created.id,
+                  progress: 100,
+                  stage: earlyStatus
+                    ? earlyStatus.status === 'INDEXED' ? 'done' : 'error'
+                    : 'uploaded',
+                }
               : upload,
           ))
-          trackProcessing(created)
+          refreshCounts()
+          reloadDocuments()
+          if (earlyStatus && !earlyStatus.title) {
+            if (earlyStatus.status === 'INDEXED') {
+              notify('success', 'Documento indexado', `${created.title} ya está disponible para búsqueda.`)
+            } else {
+              notify('error', 'Falló la indexación', `${created.title} se cargó, pero el backend no pudo procesarlo.`)
+            }
+          }
         } catch (error) {
           const message = getMessage(error)
           setUploads((current) => current.map((upload) =>
@@ -161,7 +283,8 @@ export function useDocuments(notify: Notify) {
     await Promise.all(
       Array.from({ length: Math.min(uploadConcurrency, batch.length) }, () => uploadNext()),
     )
-  }, [notify, trackProcessing])
+    reloadDocuments()
+  }, [notify, refreshCounts, reloadDocuments])
 
   const saveDocument = useCallback(async (id: string, form: DocumentForm) => {
     try {
@@ -172,10 +295,12 @@ export function useDocuments(notify: Notify) {
       setDocuments((current) => current.map((document) => document.id === id ? updated : document))
       setEditingDocument(null)
       notify('success', 'Cambios guardados', 'Los metadatos del documento se actualizaron.')
+      refreshCounts()
+      reloadDocuments()
     } catch (error) {
       notify('error', 'No se pudieron guardar los cambios', getMessage(error))
     }
-  }, [notify])
+  }, [notify, refreshCounts, reloadDocuments])
 
   const deleteDocument = useCallback(async () => {
     if (!deletingDocument) return
@@ -184,44 +309,33 @@ export function useDocuments(notify: Notify) {
       await deleteDocumentRequest(id)
       setDocuments((current) => current.filter((document) => document.id !== id))
       setUploads((current) => current.filter((upload) => upload.id !== id))
-      streams.current.get(id)?.close()
-      streams.current.delete(id)
+      documentTitles.current.delete(id)
+      pendingStatusEvents.current.delete(id)
       setDeletingDocument(null)
       notify('info', 'Documento eliminado', `${title} se eliminó de la biblioteca.`)
+      refreshCounts()
+      if (documents.length === 1 && page > 1) {
+        setPage((current) => current - 1)
+      } else {
+        reloadDocuments()
+      }
     } catch (error) {
       notify('error', 'No se pudo eliminar el documento', getMessage(error))
     }
-  }, [deletingDocument, notify])
-
-  const filteredDocuments = documents.filter((document) => {
-    const matchesFilter = activeFilter === 'ALL' || document.status === activeFilter
-    const searchableText = [
-      document.title,
-      document.filename,
-      document.author,
-      document.category,
-      document.version,
-      ...document.tags,
-    ].join(' ').toLocaleLowerCase()
-    return matchesFilter && searchableText.includes(query.trim().toLocaleLowerCase())
-  })
-
-  const counts = {
-    total: documents.length,
-    indexed: documents.filter((document) => document.status === 'INDEXED').length,
-    processing: documents.filter((document) => document.status === 'PROCESSING').length,
-    error: documents.filter((document) => document.status === 'ERROR').length,
-  }
+  }, [deletingDocument, documents.length, notify, page, refreshCounts, reloadDocuments])
 
   return {
     documents,
     uploads,
     query,
-    setQuery,
+    setQuery: changeQuery,
     activeFilter,
-    setActiveFilter,
-    filteredDocuments,
+    setActiveFilter: changeFilter,
+    filteredDocuments: documents,
     counts,
+    page,
+    setPage: changePage,
+    pagination,
     isLoading,
     editingDocument,
     setEditingDocument,

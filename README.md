@@ -20,7 +20,6 @@ Aplicación web Full Stack para la carga, procesamiento, búsqueda de alto rendi
 ├── docs/
 │   ├── architecture.md   # Arquitectura, decisiones y escalabilidad
 │   └── ia.md             # Uso de IA durante el desarrollo
-├── .env.example          # Variables de entorno para Docker Compose
 ├── docker-compose.yml    # Levantamiento unificado del entorno
 └── README.md             # Este archivo
 ```
@@ -31,7 +30,7 @@ Aplicación web Full Stack para la carga, procesamiento, búsqueda de alto rendi
 
 | Módulo | Descripción | Enlace |
 | --- | --- | --- |
-| **Frontend** | Instalación, variables de entorno y ejecución de la interfaz | [frontend/README.md](./frontend/README.md) |
+| **Frontend** | Instalación, variables de entorno, concurrencia de carga (`VITE_UPLOAD_CONCURRENCY`, 5 por defecto) y ejecución de la interfaz | [frontend/README.md](./frontend/README.md) |
 | **Backend** | Instalación, base de datos, scripts y pruebas de la API | [backend/README.md](./backend/README.md) |
 | **Arquitectura** | Diagrama, justificación del stack y estrategia de tiempo real | [docs/architecture.md](./docs/architecture.md) |
 | **Uso de IA** | Herramientas, casos de uso, prompts y validación humana | [docs/ia.md](./docs/ia.md) |
@@ -45,8 +44,7 @@ Aplicación web Full Stack para la carga, procesamiento, búsqueda de alto rendi
 Requisitos: [Docker](https://www.docker.com/) con Docker Compose.
 
 ```bash
-cp .env.example .env
-docker compose up --build
+docker compose up -d
 ```
 
 Una vez levantado el entorno:
@@ -76,7 +74,6 @@ Cada módulo tiene su propio archivo `.env.example` que sirve de plantilla. Los 
 
 | Módulo | Archivo | Detalle |
 | --- | --- | --- |
-| Raíz (Docker Compose) | `.env` | Más abajo |
 | Backend | `backend/.env` y `backend/.env.test` | [backend/README.md](./backend/README.md#3-variables-de-entorno) |
 | Frontend | `frontend/.env` | [frontend/README.md](./frontend/README.md#3-variables-de-entorno) |
 
@@ -105,4 +102,3 @@ El detalle y la justificación están en [docs/architecture.md](./docs/architect
 | Tiempo real | Server-Sent Events (SSE) |
 | Documentación de la API | Swagger (OpenAPI) |
 | Contenedores | Docker y Docker Compose |
-| Pruebas | Vitest |
