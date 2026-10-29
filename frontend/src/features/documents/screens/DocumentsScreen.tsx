@@ -158,6 +158,7 @@ function DocumentsScreen() {
         isOpen={viewer.isOpen}
         document={viewer.document}
         objectUrl={viewer.objectUrl}
+        previewUrl={viewer.previewUrl}
         text={viewer.text}
         searchTerm={viewer.searchTerm}
         isLoading={viewer.isLoading}

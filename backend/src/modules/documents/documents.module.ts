@@ -12,6 +12,7 @@ import { DocumentStorageService } from './services/document-storage.service.js';
 import { DocumentUpdaterService } from './services/document-updater.service.js';
 import { DocumentContentExtractorService } from './services/document-content-extractor.service.js';
 import { DocumentIndexingService } from './services/document-indexing.service.js';
+import { SearchablePdfService } from './services/searchable-pdf.service.js';
 import { RealtimeModule } from '../realtime/realtime.module.js';
 
 @Module({
@@ -44,6 +45,7 @@ import { RealtimeModule } from '../realtime/realtime.module.js';
     DocumentRemoverService,
     DocumentStorageService,
     DocumentContentExtractorService,
+    SearchablePdfService,
     DocumentIndexingService,
     {
       provide: 'DocumentRepository',

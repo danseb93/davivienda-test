@@ -30,7 +30,16 @@ export class PrismaSearchRepository implements SearchRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async search(query: SearchDocumentsQuery): Promise<SearchDocumentsResult> {
-    const tsQuery = Prisma.sql`websearch_to_tsquery('simple', ${query.term})`;
+    const plainTerms = query.term.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    const snippetAnchor =
+      plainTerms.find((term) => !/^(?:AND|OR|NOT)$/i.test(term)) ?? '';
+    const isPlainPrefixSearch =
+      plainTerms.length > 0 &&
+      /^[\p{L}\p{N}_\s]+$/u.test(query.term) &&
+      !/\b(?:AND|OR|NOT)\b/.test(query.term);
+    const tsQuery = isPlainPrefixSearch
+      ? Prisma.sql`to_tsquery('simple', ${plainTerms.map((term) => `${term}:*`).join(' & ')})`
+      : Prisma.sql`websearch_to_tsquery('simple', ${query.term})`;
     const [items, countRows] = await Promise.all([
       this.prisma.$queryRaw<SearchRow[]>(Prisma.sql`
         SELECT
@@ -48,7 +57,17 @@ export class PrismaSearchRepository implements SearchRepository {
               d."author",
               d."category",
               array_to_string(d."tags", ' '),
-              d."content"
+              substring(
+                d."content"
+                FROM CASE
+                  WHEN ${snippetAnchor} = '' THEN 1
+                  ELSE greatest(
+                    1,
+                    strpos(lower(d."content"), lower(${snippetAnchor})) - 1500
+                  )
+                END
+                FOR 3000
+              )
             ),
             ${tsQuery},
             'StartSel=${Prisma.raw(START_MARKER)}, StopSel=${Prisma.raw(END_MARKER)}, MaxFragments=2, MinWords=8, MaxWords=24'

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ApiDocument } from '../interfaces/api.interface'
 import type { DocumentItem } from '../interfaces/document.interface'
-import { getDocument, getOriginalFile } from '../services/documentApi'
+import { getDocument, getDocumentPreview, getOriginalFile } from '../services/documentApi'
 import { mapApiDocument } from '../utils/documentUtils'
 
 export interface DocumentViewerState {
   document: DocumentItem | null
   objectUrl: string | null
+  previewUrl: string | null
   text: string | null
   isLoading: boolean
   error: string | null
@@ -18,6 +19,7 @@ export function useDocumentViewer() {
   const [viewer, setViewer] = useState<DocumentViewerState>({
     document: null,
     objectUrl: null,
+    previewUrl: null,
     text: null,
     isLoading: false,
     error: null,
@@ -42,9 +44,11 @@ export function useDocumentViewer() {
 
     const controller = new AbortController()
     let objectUrl: string | null = null
+    let previewUrl: string | null = null
     setViewer({
       document: null,
       objectUrl: null,
+      previewUrl: null,
       text: null,
       isLoading: true,
       error: null,
@@ -57,6 +61,13 @@ export function useDocumentViewer() {
         const document = mapApiDocument(apiDocument)
         const original = await getOriginalFile(selected.id, controller.signal)
         objectUrl = URL.createObjectURL(original.blob)
+        const isPdf = original.contentType === 'application/pdf'
+        if (isPdf) {
+          const preview = await getDocumentPreview(selected.id, controller.signal)
+          previewUrl = URL.createObjectURL(preview.blob)
+        } else {
+          previewUrl = objectUrl
+        }
         const text = original.contentType === 'application/pdf'
           ? null
           : await original.blob.text()
@@ -64,6 +75,7 @@ export function useDocumentViewer() {
         setViewer({
           document: { ...document, filename: original.filename },
           objectUrl,
+          previewUrl,
           text,
           isLoading: false,
           error: null,
@@ -71,8 +83,12 @@ export function useDocumentViewer() {
         })
       } catch (error) {
         if (controller.signal.aborted) return
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
+        if (previewUrl && previewUrl !== objectUrl) URL.revokeObjectURL(previewUrl)
         setViewer((current) => ({
           ...current,
+          objectUrl: null,
+          previewUrl: null,
           isLoading: false,
           error: error instanceof Error ? error.message : 'No se pudo abrir el documento.',
         }))
@@ -83,6 +99,7 @@ export function useDocumentViewer() {
     return () => {
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (previewUrl && previewUrl !== objectUrl) URL.revokeObjectURL(previewUrl)
     }
   }, [selected])
 

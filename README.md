@@ -5,8 +5,9 @@ Aplicación web Full Stack para la carga, procesamiento, búsqueda de alto rendi
 ## ✨ Qué hace
 
 - **Carga de documentos** (TXT, PDF, Markdown) con metadatos: título, autor, categoría, etiquetas y versión.
-- **Búsqueda full-text** sobre título, metadatos y contenido, con paginación y resaltado de coincidencias. Sin consultas `LIKE`; tiempos de respuesta objetivo entre **400 ms y 1 s**.
-- **Visor de documentos** con el contenido y los metadatos completos.
+- **Búsqueda full-text** sobre título, metadatos y contenido, con prefijos de palabra (por ejemplo, `prue` encuentra `prueba`), frases exactas entre comillas, paginación y resaltado. Sin consultas `LIKE`; tiempos de respuesta objetivo entre **400 ms y 1 s**.
+- **OCR para PDF escaneados:** crea una copia buscable sin alterar el original e indexa el texto reconocido.
+- **Visor de documentos** que resalta las coincidencias sobre el PDF, incluso cuando el texto proviene de OCR.
 - **Notificaciones en tiempo real** (SSE) cuando un documento pasa a `INDEXADO` o `ERROR`, sin polling.
 
 ---

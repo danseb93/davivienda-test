@@ -1,6 +1,7 @@
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentLoadingTask, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { createSearchExpression } from '../utils/searchExpression'
 
 GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
@@ -38,10 +39,11 @@ export function PdfOriginalPreview({ url, searchTerm }: PdfOriginalPreviewProps)
         for (let pageNumber = 1; pageNumber <= loadedPdf.numPages; pageNumber += 1) {
           const page = await loadedPdf.getPage(pageNumber)
           const text = await page.getTextContent()
-          const count = text.items.reduce((total, item) => {
-            if (!('str' in item)) return total
-            return total + countMatches(item.str, searchTerm)
-          }, 0)
+          const pageText = text.items
+            .filter((item): item is typeof item & { str: string } => 'str' in item)
+            .map((item) => item.str)
+            .join(' ')
+          const count = countMatches(pageText, searchTerm)
           if (count > 0 || !searchTerm.trim()) matches.push({ pageNumber, count })
         }
 
@@ -186,43 +188,56 @@ function countMatches(text: string, searchTerm: string) {
   return Array.from(text.matchAll(expression)).length
 }
 
-function createSearchExpression(searchTerm: string) {
-  const term = searchTerm.trim()
-  if (!term) return null
-  const exactPhrase = /^".*"$/.test(term)
-  const values = exactPhrase ? [term.slice(1, -1)] : term.split(/\s+/).filter(Boolean)
-  if (!values.length) return null
-  return new RegExp(values.map(escapeRegExp).join('|'), 'giu')
-}
-
 function highlightTextLayer(layer: HTMLElement, searchTerm: string) {
   const expression = createSearchExpression(searchTerm)
   if (!expression) return
 
   const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
-  const textNodes: Text[] = []
+  const textNodes: Array<{ node: Text; start: number; end: number }> = []
+  let combinedText = ''
+  let previousBounds: DOMRect | null = null
   while (walker.nextNode()) {
-    if (walker.currentNode.textContent?.trim()) textNodes.push(walker.currentNode as Text)
+    const node = walker.currentNode as Text
+    if (!node.textContent) continue
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const bounds = range.getBoundingClientRect()
+    if (textNodes.length && previousBounds) {
+      const lineChanged =
+        Math.abs(bounds.top - previousBounds.top) >
+        Math.max(bounds.height, previousBounds.height) * 0.5
+      const gap = bounds.left - previousBounds.right
+      const separatesWords =
+        gap > Math.max(bounds.height, previousBounds.height) * 0.2
+      if (lineChanged || separatesWords) combinedText += ' '
+    }
+    const start = combinedText.length
+    combinedText += node.textContent
+    textNodes.push({ node, start, end: combinedText.length })
+    previousBounds = bounds
   }
 
-  textNodes.forEach((textNode) => {
-    const text = textNode.textContent ?? ''
-    const ranges = Array.from(text.matchAll(expression), (match) => ({
-      start: match.index ?? 0,
-      end: (match.index ?? 0) + match[0].length,
-    }))
-    for (let index = ranges.length - 1; index >= 0; index -= 1) {
-      const range = ranges[index]
-      const highlight = document.createElement('mark')
+  const layerBounds = layer.getBoundingClientRect()
+  Array.from(combinedText.matchAll(expression), (match) => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  })).forEach(({ start, end }) => {
+    const startNode = textNodes.find((item) => item.start <= start && start < item.end)
+    const endNode = textNodes.find((item) => item.start < end && end <= item.end)
+    if (!startNode || !endNode) return
+
+    const selection = document.createRange()
+    selection.setStart(startNode.node, start - startNode.start)
+    selection.setEnd(endNode.node, end - endNode.start)
+    for (const rect of Array.from(selection.getClientRects())) {
+      const highlight = document.createElement('span')
       highlight.className = 'pdf-search-highlight'
-      const selection = document.createRange()
-      selection.setStart(textNode, range.start)
-      selection.setEnd(textNode, range.end)
-      selection.surroundContents(highlight)
+      highlight.setAttribute('aria-hidden', 'true')
+      highlight.style.left = `${rect.left - layerBounds.left}px`
+      highlight.style.top = `${rect.top - layerBounds.top}px`
+      highlight.style.width = `${rect.width}px`
+      highlight.style.height = `${rect.height}px`
+      layer.append(highlight)
     }
   })
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

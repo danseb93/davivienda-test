@@ -10,6 +10,7 @@ import type { DocumentRepository } from '../domain/document.repository.js';
 import { DocumentContentExtractorService } from './document-content-extractor.service.js';
 import { DocumentStorageService } from './document-storage.service.js';
 import { RealtimeEventService } from '../../realtime/services/realtime-event.service.js';
+import { SearchablePdfService } from './searchable-pdf.service.js';
 
 @Injectable()
 export class DocumentIndexingService implements OnModuleInit, OnModuleDestroy {
@@ -23,6 +24,7 @@ export class DocumentIndexingService implements OnModuleInit, OnModuleDestroy {
     private readonly documentRepository: DocumentRepository,
     private readonly documentStorage: DocumentStorageService,
     private readonly contentExtractor: DocumentContentExtractorService,
+    private readonly searchablePdf: SearchablePdfService,
     private readonly realtimeEvents: RealtimeEventService,
   ) {}
 
@@ -54,7 +56,14 @@ export class DocumentIndexingService implements OnModuleInit, OnModuleDestroy {
       while (!this.stopped) {
         const result = await this.documentRepository.processNextPending(
           async (document) => {
-            const file = await this.documentStorage.read(document.storageName);
+            let file = await this.documentStorage.read(document.storageName);
+            if (document.mimeType === 'application/pdf') {
+              file = await this.searchablePdf.makeSearchable(file);
+              await this.documentStorage.storeSearchablePdf(
+                document.storageName,
+                file,
+              );
+            }
             return this.contentExtractor.extract(file, document.mimeType);
           },
         );

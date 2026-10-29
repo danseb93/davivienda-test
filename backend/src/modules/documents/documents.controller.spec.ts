@@ -29,13 +29,14 @@ describe('DocumentsController original file preview', () => {
     const file = Buffer.from('%PDF-1.7');
     const findById = vi.fn().mockResolvedValue(document);
     const read = vi.fn().mockResolvedValue(file);
+    const readPreview = vi.fn().mockResolvedValue(file);
     const setHeader = vi.fn();
     const controller = new DocumentsController(
       { findAll: vi.fn(), findById } as DocumentFinderService,
       { create: vi.fn() } as unknown as DocumentCreatorService,
       { update: vi.fn() } as unknown as DocumentUpdaterService,
       { remove: vi.fn() } as unknown as DocumentRemoverService,
-      { read, store: vi.fn(), remove: vi.fn() } as DocumentStorageService,
+      { read, readPreview, store: vi.fn(), remove: vi.fn() } as DocumentStorageService,
     );
 
     const result = await controller.getOriginalFile(
@@ -52,6 +53,34 @@ describe('DocumentsController original file preview', () => {
       "inline; filename*=UTF-8''guide%20%28final%29.pdf",
     );
     expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+  });
+
+  it('streams the searchable preview through the preview endpoint', async () => {
+    const document = {
+      id: 'ad0d232a-f65b-4aeb-b4a5-1bc188c1d097',
+      fileName: 'manual.pdf',
+      storageName: 'stored-file.pdf',
+      mimeType: 'application/pdf',
+    } as Document;
+    const file = Buffer.from('%PDF-1.7');
+    const readPreview = vi.fn().mockResolvedValue(file);
+    const setHeader = vi.fn();
+    const controller = new DocumentsController(
+      { findById: vi.fn().mockResolvedValue(document) } as DocumentFinderService,
+      {} as DocumentCreatorService,
+      {} as DocumentUpdaterService,
+      {} as DocumentRemoverService,
+      { readPreview } as unknown as DocumentStorageService,
+    );
+
+    const result = await controller.getPreviewFile(
+      document.id,
+      { setHeader } as unknown as Response,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(readPreview).toHaveBeenCalledWith(document.storageName);
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
   });
 });
 

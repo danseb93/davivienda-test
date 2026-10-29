@@ -20,6 +20,29 @@ describe('DocumentStorageService', () => {
     await storage.remove(storageName);
   });
 
+  it('serves and removes the searchable companion PDF while preserving the original', async () => {
+    const storageName = await storage.store({
+      originalname: 'guide.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-original'),
+    } as Express.Multer.File);
+    const searchablePdf = Buffer.from('%PDF-searchable');
+
+    await storage.storeSearchablePdf(storageName, searchablePdf);
+    await expect(storage.readPreview(storageName)).resolves.toEqual(searchablePdf);
+    await expect(storage.read(storageName)).resolves.toEqual(
+      Buffer.from('%PDF-original'),
+    );
+
+    await storage.remove(storageName);
+    await expect(storage.read(storageName)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(storage.readPreview(storageName)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it.each([
     ['guide.docx', 'application/octet-stream'],
     ['guide.md', 'application/msword'],
