@@ -28,21 +28,20 @@ Interfaz de usuario moderna, altamente reactiva y optimizada, desarrollada como 
 
 ```text
 src/
-├── app/                               # Configuración global (Router, Providers, Store)
-├── components/                        # Componentes UI globales o genéricos
+├── App.css                            # Estilos de la aplicación
+├── App.tsx                            # Componente raíz
 ├── features/
 │   └── documents/
-│       ├── components/                # Componentes de documentos
+│       ├── components/                # Componentes de documentos y búsqueda
+│       ├── config/                    # Configuración del feature
 │       ├── data/                      # Categorías y datos estáticos
 │       ├── hooks/                     # Estado y lógica del feature
-│       ├── interfaces/                # Interfaces de documentos
+│       ├── interfaces/                # Interfaces de la API y documentos
 │       ├── screens/                   # Pantallas del feature
 │       ├── services/                  # Cliente REST y SSE
 │       ├── types/                     # Tipos compartidos del feature
-│       └── utils/                     # Utilidades del feature
-├── hooks/                             # Hooks globales reutilizables
-├── services/                          # Clientes HTTP globales (Axios, Fetch)
-└── utils/                             # Utilidades y funciones de ayuda
+│       └── utils/                     # Utilidades y búsqueda
+└── main.tsx                           # Punto de entrada de React
 ```
 
 ---
@@ -91,7 +90,7 @@ VITE_UPLOAD_CONCURRENCY=5
 
 > Este valor es solo para desarrollo. Si cambias el puerto del backend, actualízalo aquí.
 
-El backend debe permitir el origen del frontend en `CORS_ORIGIN` (por defecto `http://localhost:5173,http://127.0.0.1:5173`). La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
+La API recibe un solo archivo por `POST /api/v1/documents`; el frontend envía una petición por cada archivo del lote, hasta el máximo definido por `VITE_UPLOAD_CONCURRENCY` (5 por defecto). Al recibir la respuesta `201`, el cupo se usa para iniciar el siguiente archivo; la indexación posterior no bloquea la cola.
 
 El listado paginado `GET /api/v1/documents` entrega documentos y paginación. Los conteos por estado se consultan aparte con `GET /api/v1/documents/count` (opcionalmente con `search`), en el wrapper estándar de respuesta.
 
